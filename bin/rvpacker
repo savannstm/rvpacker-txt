@@ -1,0 +1,67 @@
+#!/usr/bin/env ruby
+require 'optimist'
+require 'RGSS'
+
+opts =
+    Optimist.options do
+        opt :action,
+            'Whether to pack or unpack a project. Allowed values: pack, unpack.',
+            short: 'a',
+            type: String,
+            required: true
+        opt :project, 'Input directory of RPG Maker project.', short: 'd', type: String, required: true
+        opt :force,
+            'Update target even when source is older than target.',
+            short: 'f'
+        opt :verbose, 'Print verbose information while processing.', short: 'V'
+        opt :database,
+            'Only work on the given database.',
+            short: 'D',
+            type: String
+    end
+
+directions = { 'unpack' => :all_bin_to_text, 'pack' => :all_text_to_bin }
+projecttypes = { 'vx' => :vx, 'ace' => :ace, 'xp' => :xp }
+$VERBOSE = opts[:verbose]
+
+directory = opts[:project]
+
+raise "#{directory} not found" unless File.exist?(directory)
+
+data_folder = nil
+types = %w[vx ace xp]
+
+Dir.foreach(directory) do |filename|
+    next if ['.', '..'].include?(filename)
+
+    data_folder = filename if filename.downcase == 'data'
+end
+
+raise if data_folder.nil?
+
+type = nil
+
+types.each do |t|
+    case t
+    when 'vx'
+        type = projecttypes[t] if File.exist?(File.join(directory, data_folder, 'System.rxdata'))
+    when 'xp'
+        type = projecttypes[t] if File.exist?(File.join(directory, data_folder, 'System.rvdata'))
+    when 'ace'
+        type = projecttypes[t] if File.exist?(File.join(directory, data_folder, 'System.rvdata2'))
+    end
+end
+
+raise if type.nil?
+
+RGSS.serialize(
+    type,
+    directions[opts[:action]],
+    directory,
+    {
+        force: (opts[:force] ? true : false),
+        line_width: -1,
+        table_width: -1,
+        database: opts[:database]
+    }
+)
