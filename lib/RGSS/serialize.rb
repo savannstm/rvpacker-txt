@@ -76,21 +76,23 @@ module RGSS
         Zlib::Deflate.deflate(str, Zlib::BEST_COMPRESSION)
     end
 
-    def self.dump_data_file(file, data)
+    def self.dump_data_file(file, data, _options)
         File.open(file, 'wb') { |f| Marshal.dump(data, f) }
     end
 
-    def self.dump_yaml_file(file, data, _options)
-        File.open(file, 'wb') do |f|
-            basename = File.basename(file, '.*')
+    def self.dump_txt_file(file, data, _options)
+        basename = File.basename(file, '.*')
+        open_options = basename.start_with?('Map') ? 'a' : 'wb'
+        output_path = (basename.start_with?('Map') ? 'map.txt' : "#{basename}.txt").downcase
 
+        File.open(output_path, open_options) do |f|
             lines = IndexedSet.new
 
             if !basename.start_with?('Map') && !basename.start_with?('System')
-                data.each do |obj|
-                    next if obj.nil?
+                if !basename.start_with?('Common') && !basename.start_with?('Troops')
+                    data.each do |obj|
+                        next if obj.nil?
 
-                    if !basename.start_with?('Common') && !basename.start_with?('Troops')
                         name = obj.instance_variable_get('@name')
                         nickname = obj.instance_variable_get('@nickname')
                         description = obj.instance_variable_get('@description')
@@ -106,12 +108,16 @@ module RGSS
                             lines.add(note.gsub(/\r?\n/,
                                                 '\#'))
                         end
-                    else
+                    end
+                elsif basename.start_with?('Common')
+                    data.each do |obj|
                         list = obj.instance_variable_get('@pages').instance_variable_get('@list')
-                        list = obj.instance_variable_get('@list') if list.nil?
 
                         in_seq = false
                         line = []
+
+                        next unless list.is_a?(Array)
+
                         list.each do |item|
                             code = item.instance_variable_get('@code')
                             parameters = item.instance_variable_get('@parameters')
@@ -119,7 +125,6 @@ module RGSS
                             parameters.each do |parameter|
                                 if [401, 405].include?(code)
                                     in_seq = true
-
                                     line.push(parameter) if parameter.is_a?(String) && !parameter.empty?
                                 else
                                     if in_seq
@@ -142,14 +147,14 @@ module RGSS
                             end
                         end
                     end
+                else
+                    p data
                 end
             elsif basename.start_with?(/Map[0-9].+/)
                 events = data.instance_variable_get('@events')
-                values = instance_variables.map { |var| events.instance_variable_get(var) } unless events.nil?
 
-                values.each do |event|
+                events.each_value do |event|
                     pages = event.instance_variable_get('@pages')
-                    p pages
                     next unless pages.is_a?(Array)
 
                     pages.each do |page|
@@ -195,8 +200,7 @@ module RGSS
                 weapon_types = data.instance_variable_get('@weapon_types')
                 armor_types = data.instance_variable_get('@armor_types')
                 currency_unit = data.instance_variable_get('@currency_unit')
-                terms = data.instance_variable_get('@terms')
-                terms = data.instance_variable_get('@words') if terms.nil?
+                terms = data.instance_variable_get('@terms') || data.instance_variable_get('@words')
                 game_title = data.instance_variable_get('@game_title')
 
                 [elements, skill_types, weapon_types, armor_types].each do |arr|
@@ -209,7 +213,7 @@ module RGSS
 
                 terms.instance_variables.each do |var|
                     value = terms.instance_variable_get(var)
-                    lines.add(value) if value.is_a?(String) && !value.empty?
+                    value.each { |string| lines.add(string) if string.is_a?(String) && !string.empty? }
                 end
 
                 lines.add(game_title) if game_title.is_a?(String) && !game_title.empty?
@@ -219,13 +223,13 @@ module RGSS
         end
     end
 
-    def self.dump_save(file, data)
+    def self.dump_save(file, data, _options)
         File.open(file, 'wb') do |f|
             data.each { |chunk| Marshal.dump(chunk, f) }
         end
     end
 
-    def self.dump_raw_file(file, data)
+    def self.dump_raw_file(file, data, _options)
         File.open(file, 'wb') { |f| f.write(data) }
     end
 
@@ -240,7 +244,7 @@ module RGSS
         File.open(file, 'rb') { |f| return Marshal.load(f) }
     end
 
-    def self.load_yaml_file(file)
+    def self.load_txt_file(file)
         formatador = Formatador.new
         obj = nil
         File.open(file, 'rb') { |f| obj = Psych.load(f) }
@@ -328,7 +332,7 @@ module RGSS
     def self.scripts_to_text(dirs, src, dest, options)
         formatador = Formatador.new
         src_file = File.join(dirs[:data], src)
-        dest_file = File.join(dirs[:yaml], dest)
+        dest_file = File.join(dirs[:txt], dest)
         raise "Missing #{src}" unless File.exist?(src_file)
 
         script_entries = load(:load_data_file, src_file)
@@ -373,28 +377,24 @@ module RGSS
             end
         end
 
-        src_time = File.mtime(src_file)
-        if check_time && (src_time - 1) < oldest_time
-            formatador.display_line('[yellow]Skipping scripts to text[/]') if $VERBOSE
-        else
-            formatador.display_line('[green]Converting scripts to text[/]') if $VERBOSE
-            dump(:dump_yaml_file, dest_file, script_index, options)
-            script_code.each do |file, code|
-                dump(:dump_raw_file, file, code, src_time, options)
-            end
+        formatador.display_line('[green]Converting scripts to text[/]') if $VERBOSE
+        dump_txt_file(dest_file, script_index, options)
+
+        script_code.each do |file, code|
+            dump_raw_file(file, code, options)
         end
     end
 
     def self.scripts_to_binary(dirs, src, dest, options)
         formatador = Formatador.new
-        src_file = File.join(dirs[:yaml], src)
+        src_file = File.join(dirs[:txt], src)
         dest_file = File.join(dirs[:data], dest)
         raise "Missing #{src}" unless File.exist?(src_file)
 
         check_time = !options[:force] && File.exist?(dest_file)
         newest_time = File.mtime(src_file) if check_time
 
-        index = load(:load_yaml_file, src_file)
+        index = load(:load_txt_file, src_file)
         script_entries = []
         index.each do |entry|
             magic_number, script_name, filename = entry
@@ -421,8 +421,7 @@ module RGSS
                     '[green]Converting scripts to binary[/]'
                 )
             end
-            dump(
-                :dump_data_file,
+            dump_data_file(
                 dest_file,
                 script_entries,
                 newest_time,
@@ -448,20 +447,14 @@ module RGSS
             return
         end
 
-        src_time = File.mtime(src_file)
-        if !options[:force] && File.exist?(dest_file) &&
-            (src_time - 1) < File.mtime(dest_file)
-            formatador.display_line("[yellow]Skipping #{file}[/]") if $VERBOSE
-        else
-            if $VERBOSE
-                formatador.display_line(
-                    "[green]Converting #{file} to #{dest_ext}[/]"
-                )
-            end
-
-            data = load(loader, src_file)
-            dump(dumper, dest_file, data, options)
+        if $VERBOSE
+            formatador.display_line(
+                "[green]Converting #{file} to #{dest_ext}[/]"
+            )
         end
+
+        data = load(loader, src_file)
+        dump(dumper, dest_file, data, options)
     end
 
     def self.convert(src, dest, options)
@@ -530,7 +523,7 @@ module RGSS
         dirs = {
             base: base,
             data: File.join(base, 'Data'),
-            yaml: File.join(base, 'YAML'),
+            txt: File.join(base, 'txt'),
             script: File.join(base, 'Scripts')
         }
 
@@ -538,15 +531,15 @@ module RGSS
 
         exts = { ace: '.rvdata2', vx: '.rvdata', xp: '.rxdata' }
 
-        yaml_scripts = 'Scripts.yaml'
-        yaml = {
-            directory: dirs[:yaml],
-            exclude: [yaml_scripts],
-            ext: '.yaml',
-            load_file: :load_yaml_file,
-            dump_file: :dump_yaml_file,
-            load_save: :load_yaml_file,
-            dump_save: :dump_yaml_file
+        txt_scripts = 'Scripts.txt'
+        txt = {
+            directory: dirs[:txt],
+            exclude: [txt_scripts],
+            ext: '.txt',
+            load_file: :load_txt_file,
+            dump_file: :dump_txt_file,
+            load_save: :load_txt_file,
+            dump_save: :dump_txt_file
         }
 
         scripts = "Scripts#{exts[version]}"
@@ -573,27 +566,27 @@ module RGSS
 
         case direction
         when :data_bin_to_text
-            convert(data, yaml, options)
-            scripts_to_text(dirs, scripts, yaml_scripts, options) if convert_scripts
+            convert(data, txt, options)
+            scripts_to_text(dirs, scripts, txt_scripts, options) if convert_scripts
         when :data_text_to_bin
-            convert(yaml, data, options)
-            scripts_to_binary(dirs, yaml_scripts, scripts, options) if convert_scripts
+            convert(txt, data, options)
+            scripts_to_binary(dirs, txt_scripts, scripts, options) if convert_scripts
         when :save_bin_to_text
-            convert_saves(base, data, yaml, options) if convert_saves
+            convert_saves(base, data, txt, options) if convert_saves
         when :save_text_to_bin
-            convert_saves(base, yaml, data, options) if convert_saves
+            convert_saves(base, txt, data, options) if convert_saves
         when :scripts_bin_to_text
-            scripts_to_text(dirs, scripts, yaml_scripts, options) if convert_scripts
+            scripts_to_text(dirs, scripts, txt_scripts, options) if convert_scripts
         when :scripts_text_to_bin
-            scripts_to_binary(dirs, yaml_scripts, scripts, options) if convert_scripts
+            scripts_to_binary(dirs, txt_scripts, scripts, options) if convert_scripts
         when :all_bin_to_text
-            convert(data, yaml, options)
-            scripts_to_text(dirs, scripts, yaml_scripts, options) if convert_scripts
-            convert_saves(base, data, yaml, options) if convert_saves
+            convert(data, txt, options)
+            scripts_to_text(dirs, scripts, txt_scripts, options) if convert_scripts
+            convert_saves(base, data, txt, options) if convert_saves
         when :all_text_to_bin
-            convert(yaml, data, options)
-            scripts_to_binary(dirs, yaml_scripts, scripts, options) if convert_scripts
-            convert_saves(base, yaml, data, options) if convert_saves
+            convert(txt, data, options)
+            scripts_to_binary(dirs, txt_scripts, scripts, options) if convert_scripts
+            convert_saves(base, txt, data, options) if convert_saves
         else
             raise "Unrecognized direction :#{direction}"
         end
