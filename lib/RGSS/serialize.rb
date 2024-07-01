@@ -1,5 +1,3 @@
-# frozen_string_literal: true
-
 # Copyright (c) 2013 Howard Jeng
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -18,12 +16,7 @@
 # OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-require 'psych'
-require 'fileutils'
 require 'zlib'
-require 'pp'
-require 'formatador'
-require 'set'
 
 class IndexedSet
     def initialize
@@ -53,463 +46,600 @@ class IndexedSet
     def join(delimiter = '')
         @index.join(delimiter)
     end
+
+    def length
+        @index.length
+    end
 end
 
 module RGSS
-    def self.sanitize_filename(filename)
-        filename.gsub(/[^0-9A-Za-z]+/, '_')
+    def self.get_game_type(system_file_path)
+        object = Marshal.load(File.read(system_file_path, mode: 'rb'))
+        game_title = object.instance_variable_get(:@game_title)
+
+        return nil if !game_title.is_a?(String) || game_title.empty?
+
+        game_title.downcase!
+
+        if game_title.include?("lisa")
+            return "lisa"
+        end
+
+        nil
     end
 
-    def self.files_with_extension(directory, extension)
-        (
-            Dir
-                .entries(directory)
-                .select { |file| File.extname(file) == extension }
-        )
+    def parse_parameter(code, parameter)
+        case code
+            when 401, 405
+                case $game_type
+                    when "lisa"
+                        match = parameter.match(/^\\et\[[0-9]+\]|\\nbt/)
+                        parameter = parameter[match[0].length..] if match
+                    else
+                        nil
+                end
+            when 102, 356
+                # Implement some custom parsing
+            else
+                return nil
+        end
+
+        parameter
     end
 
-    def self.inflate(str)
-        Zlib::Inflate.inflate(str).force_encoding('UTF-8')
-    end
+    def self.parse_variable(variable)
+        lines_count = variable.count("\n")
 
-    def self.deflate(str)
-        Zlib::Deflate.deflate(str, Zlib::BEST_COMPRESSION)
-    end
+        if lines_count.positive?
+            variable = variable.gsub(/\r?\n/, '\#')
 
-    def self.dump_data_file(file, data, _options)
-        File.open(file, 'wb') { |f| Marshal.dump(data, f) }
-    end
-
-    def self.dump_txt_file(file, data, _options)
-        basename = File.basename(file, '.*')
-        open_options = basename.start_with?('Map') ? 'a' : 'wb'
-        output_path = (basename.start_with?('Map') ? 'map.txt' : "#{basename}.txt").downcase
-
-        File.open(output_path, open_options) do |f|
-            lines = IndexedSet.new
-
-            if !basename.start_with?('Map') && !basename.start_with?('System')
-                if !basename.start_with?('Common') && !basename.start_with?('Troops')
-                    data.each do |obj|
-                        next if obj.nil?
-
-                        name = obj.instance_variable_get('@name')
-                        nickname = obj.instance_variable_get('@nickname')
-                        description = obj.instance_variable_get('@description')
-                        note = obj.instance_variable_get('@note')
-
-                        lines.add(name) unless name.nil? || name.empty?
-                        lines.add(nickname) unless nickname.nil? || nickname.empty?
-                        unless description.nil? || description.empty?
-                            lines.add(description.gsub(/\r?\n/,
-                                                        '\#'))
-                        end
-                        unless note.nil? || note.empty?
-                            lines.add(note.gsub(/\r?\n/,
-                                                '\#'))
-                        end
-                    end
-                elsif basename.start_with?('Common')
-                    data.each do |obj|
-                        list = obj.instance_variable_get('@pages').instance_variable_get('@list')
-
-                        in_seq = false
-                        line = []
-
-                        next unless list.is_a?(Array)
-
-                        list.each do |item|
-                            code = item.instance_variable_get('@code')
-                            parameters = item.instance_variable_get('@parameters')
-
-                            parameters.each do |parameter|
-                                if [401, 405].include?(code)
-                                    in_seq = true
-                                    line.push(parameter) if parameter.is_a?(String) && !parameter.empty?
-                                else
-                                    if in_seq
-                                        lines.add(line.join('\#'))
-                                        line.clear
-                                        in_seq = false
-                                    end
-
-                                    case code
-                                    when 102
-                                        if parameter.is_a?(Array)
-                                            parameter.each do |param|
-                                                lines.add(param) if param.is_a?(String) && !parameter.empty?
-                                            end
-                                        end
-                                    when 356
-                                        lines.add(parameter) if parameter.is_a?(String) && !parameter.empty?
-                                    end
-                                end
-                            end
-                        end
+            case $game_type
+                when "lisa"
+                    unless variable.split('\#').all? { |line| line.match?(/^<.*>\.?$/) || line.length.nil? }
+                        return nil
                     end
                 else
-                    p data
-                end
-            elsif basename.start_with?(/Map[0-9].+/)
-                events = data.instance_variable_get('@events')
+                    nil
+            end
+        end
 
-                events.each_value do |event|
-                    pages = event.instance_variable_get('@pages')
-                    next unless pages.is_a?(Array)
+        variable
+    end
 
-                    pages.each do |page|
-                        in_seq = false
-                        line = []
+    def self.read_map(original_map_files, output_path)
+        object_map = Hash[original_map_files.map do |filename|
+            [File.basename(filename), Marshal.load(File.read(filename, mode: 'rb'))]
+        end]
 
-                        list = page.instance_variable_get('@list')
+        lines = [IndexedSet.new, IndexedSet.new]
 
-                        list.each do |item|
-                            code = item.instance_variable_get('@code')
-                            parameters = item.instance_variable_get('@parameters')
+        object_map.each do |filename, object|
+            display_name = object.instance_variable_get(:@display_name)
+            lines[1].add(display_name) unless display_name.nil? || display_name.empty?
 
-                            parameters.each do |parameter|
-                                if [401, 405].include?(code)
-                                    in_seq = true
+            events = object.instance_variable_get(:@events)
+            next if events.nil?
 
-                                    line.push(parameter) if parameter.is_a?(String) && !parameter.empty?
-                                else
-                                    if in_seq
-                                        lines.add(line.join('\#'))
-                                        line.clear
-                                        in_seq = false
-                                    end
+            events.each_value do |event|
+                pages = event.instance_variable_get(:@pages)
+                next if pages.nil?
 
-                                    case code
-                                    when 102
-                                        if parameter.is_a?(Array)
-                                            parameter.each do |param|
-                                                lines.add(param) if param.is_a?(String) && !parameter.empty?
-                                            end
+                pages.each do |page|
+                    list = page.instance_variable_get(:@list)
+                    next if list.nil?
+
+                    in_sequence = false
+                    line = []
+
+                    list.each do |item|
+                        code = item.instance_variable_get(:@code)
+                        parameters = item.instance_variable_get(:@parameters)
+
+                        parameters.each do |parameter|
+                            if code == 401
+                                if parameter.is_a?(String) && !parameter.empty?
+                                    in_sequence = true
+                                    parsed = parse_parameter(code, parameter)
+                                    line.push(parsed) unless parsed.nil?
+                                end
+                            else
+                                if in_sequence
+                                    lines[0].add(line.join('\#'))
+                                    line.clear
+                                    in_sequence = false
+                                end
+
+                                if code == 102 && parameter.is_a?(Array)
+                                    parameter.each do |subparameter|
+                                        if subparameter.is_a?(String) && !subparameter.empty?
+                                            parsed = parse_parameter(code, subparameter)
+                                            lines[0].add(parsed) unless parsed.nil?
                                         end
-                                    when 356
-                                        lines.add(parameter) if parameter.is_a?(String) && !parameter.empty?
+                                    end
+                                elsif code == 356
+                                    if parameter.is_a?(String) && !parameter.empty?
+                                        parsed = parse_parameter(code, parameter)
+                                        lines[0].add(parsed.gsub(/\r?\n/, '\#')) unless parsed.nil?
                                     end
                                 end
                             end
                         end
                     end
                 end
-            elsif basename.start_with?('System')
-                elements = data.instance_variable_get('@elements')
-                skill_types = data.instance_variable_get('@skill_types')
-                weapon_types = data.instance_variable_get('@weapon_types')
-                armor_types = data.instance_variable_get('@armor_types')
-                currency_unit = data.instance_variable_get('@currency_unit')
-                terms = data.instance_variable_get('@terms') || data.instance_variable_get('@words')
-                game_title = data.instance_variable_get('@game_title')
-
-                [elements, skill_types, weapon_types, armor_types].each do |arr|
-                    next if arr.nil?
-
-                    arr.each { |string| lines.add(string) if string.is_a?(String) && !string.empty? }
-                end
-
-                lines.add(currency_unit) if currency_unit.is_a?(String) && !currency_unit.empty?
-
-                terms.instance_variables.each do |var|
-                    value = terms.instance_variable_get(var)
-                    value.each { |string| lines.add(string) if string.is_a?(String) && !string.empty? }
-                end
-
-                lines.add(game_title) if game_title.is_a?(String) && !game_title.empty?
             end
 
-            f.write(lines.join("\n"))
+            puts "Parsed #{filename}" if $logging
         end
+
+        File.write("#{output_path}/maps.txt", lines[0].join("\n"))
+        File.write("#{output_path}/maps_trans.txt", "\n" * (lines[0].length.positive? ? lines[0].length - 1 : 0))
+        File.write("#{output_path}/names.txt", lines[1].join("\n"))
+        File.write("#{output_path}/names_trans.txt", "\n" * (lines[1].length.positive? ? lines[1].length - 1 : 0))
     end
 
-    def self.dump_save(file, data, _options)
-        File.open(file, 'wb') do |f|
-            data.each { |chunk| Marshal.dump(chunk, f) }
-        end
-    end
+    def self.read_other(original_other_files, output_path)
+        object_array_map = Hash[original_other_files.map do |filename|
+            [File.basename(filename), Marshal.load(File.read(filename, mode: 'rb'))]
+        end]
 
-    def self.dump_raw_file(file, data, _options)
-        File.open(file, 'wb') { |f| f.write(data) }
-    end
+        object_array_map.each do |filename, object_array|
+            processed_filename = File.basename(filename, '.*').downcase
+            lines = IndexedSet.new
 
-    def self.dump(dumper, file, data, options)
-        method(dumper).call(file, data, options)
-    rescue StandardError
-        warn "Exception dumping #{file}"
-        raise
-    end
+            if !filename.start_with?(/Common|Troops/)
+                object_array.each do |object|
+                    name = object.instance_variable_get(:@name)
+                    nickname = object.instance_variable_get(:@nickname)
+                    description = object.instance_variable_get(:@description)
+                    note = object.instance_variable_get(:@note)
 
-    def self.load_data_file(file)
-        File.open(file, 'rb') { |f| return Marshal.load(f) }
-    end
-
-    def self.load_txt_file(file)
-        formatador = Formatador.new
-        obj = nil
-        File.open(file, 'rb') { |f| obj = Psych.load(f) }
-        max = 0
-        return obj unless obj.is_a?(Array)
-
-        seen = {}
-        obj.each do |elem|
-            next if elem.nil?
-
-            if elem.instance_variable_defined?('@id')
-                id = elem.instance_variable_get('@id')
+                    [name, nickname, description, note].each do |variable|
+                        if variable.is_a?(String) && !variable.empty?
+                            parsed = parse_variable(variable)
+                            lines.add(parsed) unless parsed.nil?
+                        end
+                    end
+                end
             else
-                id = nil
-                elem.instance_variable_set('@id', nil)
-            end
-            next if id.nil?
+                object_array.each do |object|
+                    pages = object.instance_variable_get(:@pages)
+                    pages_length = pages.nil? ? 1 : pages.length
 
-            if seen.key?(id)
-                formatador.display_line(
-                    "[red]#{file}: Duplicate ID #{id}[/]"
-                )
-                formatador.indent do
-                    formatador.indent do
-                        elem
-                            .pretty_inspect
-                            .split(/\n/)
-                            .each do |line|
-                                formatador.display_line("[red]#{line}[/]")
+                    (0..pages_length).each do |i|
+                        list = pages.nil? ? object.instance_variable_get(:@list) : pages[i].instance_variable_get(:@list)
+                        next if list.nil?
+
+                        in_sequence = false
+                        line = []
+
+                        list.each do |item|
+                            code = item.instance_variable_get(:@code)
+                            parameters = item.instance_variable_get(:@parameters)
+
+                            parameters.each do |parameter|
+                                if [401, 405].include?(code)
+                                    in_sequence = true
+                                    line.push(parameter.gsub(/\r?\n/, '\#')) if parameter.is_a?(String) && !parameter.empty?
+                                else
+                                    if in_sequence
+                                        lines.add(line.join('\#'))
+                                        line.clear
+                                        in_sequence = false
+                                    end
+
+                                    case code
+                                        when 102
+                                            if parameter.is_a?(Array)
+                                                parameter.each do |subparameter|
+                                                    lines.add(subparameter) if subparameter.is_a?(String) && !subparameter.empty?
+                                                end
+                                            end
+                                        when 356
+                                            lines.add(parameter.gsub(/\r?\n/, '\#')) if parameter.is_a?(String) &&
+                                                !parameter.empty?
+                                        else
+                                            nil
+                                    end
+                                end
                             end
-                    end
-                    formatador.display_line
-                    formatador.display_line("[red]Last seen at:\n[/]")
-                    formatador.indent do
-                        elem
-                            .pretty_inspect
-                            .split(/\n/)
-                            .each do |line|
-                                formatador.display_line("[red]#{line}[/]")
-                            end
+                        end
                     end
                 end
-                exit
-            end
-            seen[id] = elem
-            max = ((id + 1) unless id < max)
-        end
-
-        obj.each do |elem|
-            next if elem.nil?
-
-            id = elem.instance_variable_get('@id')
-            if id.nil?
-                elem.instance_variable_set('@id', max)
-                max += 1
-            end
-        end
-        obj
-    end
-
-    def self.load_raw_file(file)
-        File.open(file, 'rb') { |f| return f.read }
-    end
-
-    def self.load_save(file)
-        File.open(file, 'rb') do |f|
-            data = []
-
-            until f.eof?
-                o = Marshal.load(f)
-                data.push(o)
             end
 
-            return data
+            puts "Parsed #{filename}" if $logging
+
+            File.write("#{output_path}/#{processed_filename}.txt", lines.join("\n"))
+            File.write("#{output_path}/#{processed_filename}_trans.txt", "\n" * (lines.length.positive? ? lines.length - 1 : 0))
         end
     end
 
-    def self.load(loader, file)
-        method(loader).call(file)
-    rescue StandardError
-        warn "Exception loading #{file}"
-        raise
+    def self.read_system(system_file_path, output_path)
+        filename = File.basename(system_file_path)
+        basename = File.basename(system_file_path, '.*').downcase
+        object = Marshal.load(File.read(system_file_path, mode: 'rb'))
+
+        lines = IndexedSet.new
+
+        elements = object.instance_variable_get(:@elements)
+        skill_types = object.instance_variable_get(:@skill_types)
+        weapon_types = object.instance_variable_get(:@weapon_types)
+        armor_types = object.instance_variable_get(:@armor_types)
+        currency_unit = object.instance_variable_get(:@currency_unit)
+        terms = object.instance_variable_get(:@terms) || object.instance_variable_get(:@words)
+        game_title = object.instance_variable_get(:@game_title)
+
+        [elements, skill_types, weapon_types, armor_types].each do |array|
+            next if array.nil?
+            array.each { |string| lines.add(string) unless string.is_a?(String) && string.empty? }
+        end
+
+        lines.add(currency_unit) unless currency_unit.is_a?(String) && currency_unit.empty?
+
+        terms.instance_variables.each do |variable|
+            value = terms.instance_variable_get(variable)
+            value.each { |string| lines.add(string) unless string.is_a?(String) && string.empty? }
+        end
+
+        lines.add(game_title) unless game_title.is_a?(String) && game_title.empty?
+
+        puts "Parsed #{filename}" if $logging
+
+        File.write("#{output_path}/#{basename}.txt", lines.join("\n"), mode: 'wb')
+        File.write("#{output_path}/#{basename}_trans.txt", "\n" * (lines.length.positive? ? lines.length - 1 : 0),
+                   mode: 'wb')
     end
 
-    def self.scripts_to_text(dirs, src, dest, options)
-        formatador = Formatador.new
-        src_file = File.join(dirs[:data], src)
-        dest_file = File.join(dirs[:txt], dest)
-        raise "Missing #{src}" unless File.exist?(src_file)
+    def self.read_scripts(scripts_file_path, output_path)
+        script_entries = Marshal.load(File.read(scripts_file_path, mode: 'rb'))
+        strings = []
 
-        script_entries = load(:load_data_file, src_file)
-        check_time = !options[:force] && File.exist?(dest_file)
-        oldest_time = File.mtime(dest_file) if check_time
-
-        file_map = Hash.new(-1)
-        script_index = []
-        script_code = {}
-
-        idx = 0
         script_entries.each do |script|
-            idx += 1
-            magic_number = idx
-            script_name = script[1]
-            code = inflate(script[2])
-            script_name.force_encoding('UTF-8')
+            code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
+            code.scan(/".*"/) { |string| strings.push(string) }
+        end
 
-            if !code.empty?
-                filename =
-                    if script_name.empty?
-                        'blank'
-                    else
-                        sanitize_filename(script_name)
-                    end
-                key = filename.upcase
-                value = (file_map[key] += 1)
-                actual_filename =
-                    "#{filename}#{value.zero? ? '' : ".#{value}"}.rb"
-                script_index.push([magic_number, script_name, actual_filename])
-                full_filename = File.join(dirs[:script], actual_filename)
-                script_code[full_filename] = code
-                check_time = false unless File.exist?(full_filename)
-                if check_time
-                    oldest_time = [
-                        File.mtime(full_filename),
-                        oldest_time
-                    ].min
+        File.write("#{output_path}/scripts.txt", strings.join("\n"), mode: 'wb')
+        File.write("#{output_path}/scripts_trans.txt", "\n" * (strings.length.positive? ? strings.length - 1 : 0), mode: 'wb')
+    end
+
+    def self.merge_seq(object_array)
+        first = nil
+        number = -1
+        in_sequence = false
+        string_array = []
+
+        i = 0
+
+        while i > object_array.length
+            object = object_array[i]
+            code = object.instance_variable_get(:@code)
+
+            if [401, 405].include?(code)
+                first = i if first.nil?
+
+                number += 1
+                string_array.push(object.instance_variable_get(:@parameters)[0])
+                in_sequence = true
+            elsif i.positive? && in_sequence && !first.nil? && !number.negative?
+                parameters = object_array[first].instance_variable_get(:@parameters)
+                parameters[0] = string_array.join("\n")
+                object_array[first].instance_variable_set(parameters)
+
+                start_index = first + 1
+                items_to_delete = start_index + number
+                object_array.slice(start_index, items_to_delete)
+
+                string_array.clear
+                i -= number
+                number = -1
+                first = nil
+                in_sequence = false
+            end
+
+            i += 1
+        end
+
+        object_array
+    end
+
+    def self.merge_map(object)
+        events = object.instance_variable_get(:@events)
+        return object if events.nil?
+
+        events.each_value do |event|
+            pages = event.instance_variable_get(:@pages)
+            next if pages.nil?
+
+            pages.each do |page|
+                list = page.instance_variable_get(:@list)
+                page.instance_variable_set(:@list, merge_seq(list))
+            end
+        end
+
+        return object
+    end
+
+    def self.merge_other(object_array)
+        object_array.each do |object|
+            next if object.nil?
+
+            pages = object.instance_variable_get(:@pages)
+
+            if pages.is_a?(Array)
+                pages.each do |page|
+                    list = page.instance_variable_get(:@list)
+                    next unless list.is_a?(Array)
+
+                    page.instance_variable_set(:@list, merge_seq(list))
                 end
             else
-                script_index.push([magic_number, script_name, nil])
+                list = object.instance_variable_get(:@list)
+                next unless list.is_a?(Array)
+
+                object.instance_variable_set(:@list, merge_seq(list))
             end
-        end
-
-        formatador.display_line('[green]Converting scripts to text[/]') if $VERBOSE
-        dump_txt_file(dest_file, script_index, options)
-
-        script_code.each do |file, code|
-            dump_raw_file(file, code, options)
         end
     end
 
-    def self.scripts_to_binary(dirs, src, dest, options)
-        formatador = Formatador.new
-        src_file = File.join(dirs[:txt], src)
-        dest_file = File.join(dirs[:data], dest)
-        raise "Missing #{src}" unless File.exist?(src_file)
-
-        check_time = !options[:force] && File.exist?(dest_file)
-        newest_time = File.mtime(src_file) if check_time
-
-        index = load(:load_txt_file, src_file)
-        script_entries = []
-        index.each do |entry|
-            magic_number, script_name, filename = entry
-            code = ''
-            if filename
-                full_filename = File.join(dirs[:script], filename)
-                raise "Missing script file #{filename}" unless File.exist?(full_filename)
-
-                if check_time
-                    newest_time = [
-                        File.mtime(full_filename),
-                        newest_time
-                    ].max
+    def self.get_translated(code, parameter, hashmap)
+        case code
+            when 401, 356, 405
+                case $game_type
+                    when "lisa"
+                        match = parameter.scan(/^\\et\[[0-9]+\]/) || parameter.scan(/^\\nbt/)
+                        parameter = parameter.slice(match[0].length) unless match.nil?
+                    else
+                        nil
                 end
-                code = load(:load_raw_file, full_filename)
+            when 102, 402
+                nil
+            else
+                nil
+        end
+
+        return hashmap[parameter]
+    end
+
+    def self.get_variable_translated(variable, hashmap)
+        hashmap[variable]
+    end
+
+    def self.write_map(original_files, maps_path, output_path)
+        object_map = Hash[original_files.map do |filename|
+            [File.basename(filename), merge_map(Marshal.load(File.read(filename, mode: 'rb')))]
+        end]
+
+        maps_original_text = (File.read("#{maps_path}/maps.txt").split("\n").map do |line|
+            line.gsub('\#', "\n")
+        end).freeze
+
+        names_original_text = (File.read("#{maps_path}/names.txt").split("\n").map do |line|
+            line.gsub('\#', "\n")
+        end).freeze
+
+        maps_translated_text = File.read("#{maps_path}/maps_trans.txt").split("\n").map do |line|
+            line.gsub('\#', "\n")
+        end
+
+        names_translated_text = File.read("#{maps_path}/names_trans.txt").split("\n").map do |line|
+            line.gsub('\#', "\n")
+        end
+
+        maps_translation_map = Hash[maps_original_text.zip(maps_translated_text)].freeze
+        names_translation_map = Hash[names_original_text.zip(names_translated_text)].freeze
+
+        allowed_codes = [401, 402, 356, 102].freeze
+
+        object_map.each do |filename, object|
+            display_name = object.instance_variable_get(:@display_name)
+            object.instance_variable_set(:@display_name, names_translation_map[display_name]) if names_translation_map.key?(display_name)
+
+            events = object.instance_variable_get(:@events)
+            next if events.nil?
+
+            events.each_value do |event|
+                pages = event.instance_variable_get(:@pages)
+                next if pages.nil?
+
+                pages.each do |page|
+                    list = page.instance_variable_get(:@list)
+                    next if list.nil?
+
+                    list.each do |item|
+                        code = item.instance_variable_get(:@code)
+                        next unless allowed_codes.include?(code)
+
+                        parameters = item.instance_variable_get(:@parameters)
+
+                        parameters.each_with_index do |parameter, i|
+                            if [401, 402, 356].include?(code)
+                                if parameter.is_a?(String) && !parameter.empty?
+                                    translated = get_translated(code, parameter, maps_translation_map)
+                                    parameters[i] = translated unless translated.nil?
+                                end
+                            elsif parameter.is_a?(Array)
+                                parameter.each_with_index do |subparameter, j|
+                                    if subparameter.is_a?(String) && !subparameter.empty?
+                                        translated = get_translated(code, subparameter, maps_translation_map)
+                                        parameters[i][j] = translated unless translated.nil?
+                                    end
+                                end
+                            end
+                        end
+
+                        item.instance_variable_set(:@parameters, parameters)
+                    end
+                end
             end
-            script_entries.push([magic_number, script_name, deflate(code)])
+
+            puts "Written #{filename}" if $logging
+
+            File.write(File.join(output_path, filename), Marshal.dump(object), mode: 'wb')
         end
-        if check_time && (newest_time - 1) < File.mtime(dest_file)
-            formatador.display_line('[yellow]Skipping scripts to binary[/]') if $VERBOSE
-        else
-            if $VERBOSE
-                formatador.display_line(
-                    '[green]Converting scripts to binary[/]'
-                )
+    end
+
+    def self.write_other(original_files, other_path, output_path)
+        object_array_map = Hash[original_files.map do |filename|
+            basename = File.basename(filename)
+            object = Marshal.load(File.read(filename, mode: 'rb'))
+            object = merge_other(object)[1..] if basename.start_with?(/Common|Troops/)
+
+            [basename, object]
+        end]
+
+        allowed_codes = [401, 402, 405, 356, 102].freeze
+
+        object_array_map.each do |filename, object_array|
+            processed_filename = File.basename(filename, '.*').downcase
+
+            other_original_text = File.read("#{File.join(other_path, processed_filename)}.txt").split("\n").map do
+            |line|
+                line.gsub('\#', "\n")
             end
-            dump_data_file(
-                dest_file,
-                script_entries,
-                newest_time,
-                options
-            )
+
+            other_translated_text = File.read("#{File.join(other_path, processed_filename)}_trans.txt").split("\n")
+                                        .map do
+            |line|
+                line.gsub('\#', "\n")
+            end
+
+            other_translation_map = Hash[other_original_text.zip(other_translated_text)]
+
+            if !filename.start_with?(/Common|Troops/)
+                object_array.each do |object|
+                    next if object.nil?
+
+                    name = object.instance_variable_get(:@name)
+                    nickname = object.instance_variable_get(:@nickname)
+                    description = object.instance_variable_get(:@description)
+                    note = object.instance_variable_get(:@note)
+
+                    [[:@name, name], [:@nickname, nickname], [:@description, description], [:@note, note]].each do |symbol, variable|
+                        if variable.is_a?(String) && !variable.empty?
+                            translated = get_variable_translated(variable, other_translation_map)
+                            object.instance_variable_set(symbol, variable) unless translated.nil?
+                        end
+                    end
+                end
+            else
+                object_array.each do |object|
+                    pages = object.instance_variable_get(:@pages)
+                    pages_length = pages.nil? ? 1 : pages.length
+
+                    (0..pages_length).each do |i|
+                        list = pages.nil? ? object.instance_variable_get(:@list) : pages[i].instance_variable_get(:@list)
+                        next if list.nil?
+
+                        list.each do |item|
+                            code = item.instance_variable_get(:@code)
+                            next unless allowed_codes.include?(code)
+
+                            parameters = item.instance_variable_get(:@parameters)
+                            parameters.each do |parameter|
+                                if [401, 402, 356, 405].include?(code)
+                                    if parameter.is_a?(String) && !parameter.empty?
+                                        translated = get_translated(code, parameter, other_translation_map)
+                                        parameters[i] = translated unless translated.nil?
+                                    end
+                                elsif parameter.is_a?(Array)
+                                    parameter.each_with_index.map do |subparameter, j|
+                                        if subparameter.is_a?(String) && !subparameter.empty?
+                                            translated = get_translated(code, subparameter, other_translation_map)
+                                            parameters[i][j] = translated unless translated.nil?
+                                        end
+                                    end
+                                end
+                            end
+
+                            item.instance_variable_set(:@parameters, parameters)
+                        end
+                    end
+                end
+            end
+
+            puts "Written #{filename}" if $logging
+
+            File.write(File.join(output_path, filename), Marshal.dump(object_array), mode: 'wb')
         end
     end
 
-    def self.process_file(
-        file,
-        src_file,
-        dest_file,
-        dest_ext,
-        loader,
-        dumper,
-        options
-    )
-        formatador = Formatador.new
-        fbase = File.basename(file, '.*')
+    def self.write_system(system_file_path, other_path, output_path)
+        basename = File.basename(system_file_path)
+        object = Marshal.load(File.read(system_file_path, mode: 'rb'))
 
-        if !options[:database].nil? &&
-            (options[:database].downcase != fbase.downcase)
-            return
+        system_original_text = File.read("#{other_path}/system.txt").split("\n")
+        system_translated_text = File.read("#{other_path}/system_trans.txt").split("\n")
+
+        system_translation_map = Hash[system_original_text.zip(system_translated_text)]
+
+        symbols = %i[@elements @skill_types @weapon_types @armor_types]
+        elements = object.instance_variable_get(:@elements)
+        skill_types = object.instance_variable_get(:@skill_types)
+        weapon_types = object.instance_variable_get(:@weapon_types)
+        armor_types = object.instance_variable_get(:@armor_types)
+        currency_unit = object.instance_variable_get(:@currency_unit)
+        terms = object.instance_variable_get(:@terms) || object.instance_variable_get(:@words)
+        game_title = object.instance_variable_get(:@game_title)
+
+        [elements, skill_types, weapon_types, armor_types].each_with_index.each do |array, i|
+            next if array.nil?
+
+            array.each_with_index do |string, j|
+                translated = system_translation_map[string]
+                array[j] = translated unless translated.nil?
+            end
+
+            object.instance_variable_set(symbols[i], array)
         end
 
-        if $VERBOSE
-            formatador.display_line(
-                "[green]Converting #{file} to #{dest_ext}[/]"
-            )
+        instance_variable_set(:@currency_unit, system_translation_map[currency_unit]) if !currency_unit.nil? &&
+            system_translation_map.key?(currency_unit)
+
+        terms.instance_variables.each do |variable|
+            value = terms.instance_variable_get(variable)
+
+            value.each_with_index do |string, i|
+                translated = system_translation_map[string]
+                value[i] = translated unless translated.nil?
+            end
+
+            terms.instance_variable_set(variable, value)
         end
 
-        data = load(loader, src_file)
-        dump(dumper, dest_file, data, options)
+        object.instance_variable_defined?(:@terms) ? object.instance_variable_set(:@terms, terms) : object
+                                                                                                        .instance_variable_set(:@words, terms)
+
+        object.instance_variable_set(:@game_title, system_translation_map[game_title]) if !currency_unit.nil? &&
+            system_translation_map
+                .key?(game_title)
+
+        puts "Written #{basename}" if $logging
+
+        File.write("#{output_path}/#{basename}", Marshal.dump(object), mode: 'wb')
     end
 
-    def self.convert(src, dest, options)
-        files = files_with_extension(src[:directory], src[:ext])
-        files -= src[:exclude]
+    def self.write_scripts(scripts_file, other_path, output_path)
+        script_entries = Marshal.load(File.read(scripts_file, mode: 'rb'))
+        strings_original = File.read("#{other_path}/scripts.txt", mode: 'rb').split("\n").map { |line| line.gsub('\#', "\r\n") }
+        strings = File.read("#{other_path}/scripts_trans.txt", mode: 'rb').split("\n").map { |line| line.gsub('\#', "\r\n") }
 
-        files.each do |file|
-            src_file = File.join(src[:directory], file)
-            dest_file =
-                File.join(dest[:directory], File.basename(file, '.*') + dest[:ext])
+        scripts_translation_map = Hash[strings_original.zip(strings)]
 
-            process_file(
-                file,
-                src_file,
-                dest_file,
-                dest[:ext],
-                src[:load_file],
-                dest[:dump_file],
-                options
-            )
+        script_entries.each_with_index do |script, i|
+            code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
+            code.gsub(/".*"/, scripts_translation_map[strings[i]]) if scripts_translation_map.key?(strings[i])
+            script[2] = Zlib::Deflate.deflate(code, Zlib::BEST_COMPRESSION)
         end
+
+        File.write("#{output_path}/#{File.basename(scripts_file)}", Marshal.dump(script_entries), mode: 'wb')
     end
 
-    def self.convert_saves(base, src, dest, options)
-        save_files = files_with_extension(base, src[:ext])
-        save_files.each do |file|
-            src_file = File.join(base, file)
-            dest_file = File.join(base, File.basename(file, '.*') + dest[:ext])
+    def self.serialize(version, action, directory, options = {})
+        start_time = Time.now
 
-            process_file(
-                file,
-                src_file,
-                dest_file,
-                dest[:ext],
-                src[:load_save],
-                dest[:dump_save],
-                options
-            )
-        end
-    end
-
-    # [version] one of :ace, :vx, :xp
-    # [direction] one of :data_bin_to_text, :data_text_to_bin, :save_bin_to_text,
-    #             :save_text_to_bin, :scripts_bin_to_text, :scripts_text_to_bin,
-    #             :all_text_to_bin, :all_bin_to_text
-    # [directory] directory that project file is in
-    # [options] :force - ignores file dates when converting (default false)
-    #           :round_trip - create yaml data that matches original marshalled data skips
-    #                         data cleanup operations (default false)
-    #           :line_width - line width form YAML files, -1 for no line width limit
-    #                         (default 130)
-    #           :table_width - maximum number of entries per row for table data, -1 for no
-    #                          table row limit (default 20)
-    def self.serialize(version, direction, directory, options = {})
         setup_classes(version, options)
+
         options = options.clone
         options[:sort] = true if %i[vx xp].include?(version)
         options[:flow_classes] = [Color, Tone, RPG::BGM, RPG::BGS, RPG::MoveCommand, RPG::SE].freeze
@@ -518,77 +648,56 @@ module RGSS
         table_width = options[:table_width]
         RGSS.reset_const(Table, :MAX_ROW_LENGTH, table_width || 20)
 
-        base = File.realpath(directory)
+        absolute_path = File.realpath(directory)
 
-        dirs = {
-            base: base,
-            data: File.join(base, 'Data'),
-            txt: File.join(base, 'txt'),
-            script: File.join(base, 'Scripts')
+        paths = {
+            original_path: File.join(absolute_path, 'Data'),
+            translation_path: File.join(absolute_path, 'translation'),
+            maps_path: File.join(absolute_path, 'translation/maps'),
+            other_path: File.join(absolute_path, 'translation/other'),
+            output_path: File.join(absolute_path, 'output')
         }
 
-        dirs.each_value { |obj| FileUtils.mkdir(obj) unless File.exist?(obj) }
+        paths.each_value { |path| FileUtils.mkdir_p(path) }
 
-        exts = { ace: '.rvdata2', vx: '.rvdata', xp: '.rxdata' }
+        extensions = { ace: '.rvdata2', vx: '.rvdata', xp: '.rxdata' }
 
-        txt_scripts = 'Scripts.txt'
-        txt = {
-            directory: dirs[:txt],
-            exclude: [txt_scripts],
-            ext: '.txt',
-            load_file: :load_txt_file,
-            dump_file: :dump_txt_file,
-            load_save: :load_txt_file,
-            dump_save: :dump_txt_file
-        }
+        files = (
+            Dir
+                .children(paths[:original_path])
+                .select { |filename| File.extname(filename) == extensions[version] }
+                .map { |filename| "#{paths[:original_path]}/#{filename}" }
+        )
 
-        scripts = "Scripts#{exts[version]}"
-        data = {
-            directory: dirs[:data],
-            exclude: [scripts],
-            ext: exts[version],
-            load_file: :load_data_file,
-            dump_file: :dump_data_file,
-            load_save: :load_save,
-            dump_save: :dump_save
-        }
+        maps_files = []
+        other_files = []
+        system_file = "#{paths[:original_path]}/System#{extensions[version]}"
+        scripts_file = "#{paths[:original_path]}/Scripts#{extensions[version]}"
 
-        convert_scripts = if options[:database].nil? || (options[:database].downcase == 'scripts')
-                              true
-                          else
-                              false
-                          end
-        convert_saves = if options[:database].nil? || (options[:database].downcase == 'saves')
-                            true
-                        else
-                            false
-                        end
+        $game_type = get_game_type(system_file)
 
-        case direction
-        when :data_bin_to_text
-            convert(data, txt, options)
-            scripts_to_text(dirs, scripts, txt_scripts, options) if convert_scripts
-        when :data_text_to_bin
-            convert(txt, data, options)
-            scripts_to_binary(dirs, txt_scripts, scripts, options) if convert_scripts
-        when :save_bin_to_text
-            convert_saves(base, data, txt, options) if convert_saves
-        when :save_text_to_bin
-            convert_saves(base, txt, data, options) if convert_saves
-        when :scripts_bin_to_text
-            scripts_to_text(dirs, scripts, txt_scripts, options) if convert_scripts
-        when :scripts_text_to_bin
-            scripts_to_binary(dirs, txt_scripts, scripts, options) if convert_scripts
-        when :all_bin_to_text
-            convert(data, txt, options)
-            scripts_to_text(dirs, scripts, txt_scripts, options) if convert_scripts
-            convert_saves(base, data, txt, options) if convert_saves
-        when :all_text_to_bin
-            convert(txt, data, options)
-            scripts_to_binary(dirs, txt_scripts, scripts, options) if convert_scripts
-            convert_saves(base, txt, data, options) if convert_saves
-        else
-            raise "Unrecognized direction :#{direction}"
+        files.each do |file|
+            basename = File.basename(file)
+
+            if basename.start_with?(/Map[0-9]/)
+                maps_files.push(file)
+            elsif !basename.start_with?(/Map|Tilesets|Animations|System|Scripts|Areas/)
+                other_files.push(file)
+            end
         end
+
+        if action == 'read'
+            read_map(maps_files, paths[:maps_path])
+            read_other(other_files, paths[:other_path])
+            read_system(system_file, paths[:other_path])
+            read_scripts(scripts_file, paths[:other_path])
+        else
+            write_map(maps_files, paths[:maps_path], paths[:output_path])
+            write_other(other_files, paths[:other_path], paths[:output_path])
+            write_system(system_file, paths[:other_path], paths[:output_path])
+            write_scripts(scripts_file, paths[:other_path], paths[:output_path])
+        end
+
+        puts "Done in #{(Time.now - start_time)}"
     end
 end

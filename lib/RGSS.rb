@@ -1,30 +1,34 @@
-# Copyright (c) 2013 Howard Jeng
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this
-# software and associated documentation files (the "Software"), to deal in the Software
-# without restriction, including without limitation the rights to use, copy, modify, merge,
-# publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
-# to whom the Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all copies or
-# substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-# PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
-# FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-# OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
+=begin
+Copyright (c) 2013 Howard Jeng
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this
+software and associated documentation files (the "Software"), to deal in the Software
+without restriction, including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons
+to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+=end
 
 require 'scanf'
 
 class Table
     def initialize(bytes)
         @dim, @x, @y, @z, items, *@data = bytes.unpack('L5 S*')
-        raise 'Size mismatch loading Table from data' unless items == @data.length
-        return if @x * @y * @z == items
-
-        raise 'Size mismatch loading Table from data'
+        unless items == @data.length
+            raise 'Size mismatch loading Table from data'
+        end
+        unless @x * @y * @z == items
+            raise 'Size mismatch loading Table from data'
+        end
     end
 
     MAX_ROW_LENGTH = 20
@@ -37,20 +41,16 @@ class Table
         coder['y'] = @y
         coder['z'] = @z
 
-        if (@x * @y * @z).positive?
-            stride = if @x < 2
-                         @y < 2 ? @z : @y
-                     else
-                         @x
-                     end
+        if @x * @y * @z > 0
+            stride = @x < 2 ? (@y < 2 ? @z : @y) : @x
             rows = @data.each_slice(stride).to_a
             if MAX_ROW_LENGTH != -1 && stride > MAX_ROW_LENGTH
                 block_length = (stride + MAX_ROW_LENGTH - 1) / MAX_ROW_LENGTH
                 row_length = (stride + block_length - 1) / block_length
                 rows =
                     rows
-                    .collect { |x| x.each_slice(row_length).to_a }
-                    .flatten(1)
+                        .collect { |x| x.each_slice(row_length).to_a }
+                        .flatten(1)
             end
             rows = rows.collect { |x| x.collect { |y| '%04x' % y }.join(' ') }
             coder['data'] = rows
@@ -67,13 +67,13 @@ class Table
         @data =
             coder['data'].collect { |x| x.split(' ').collect(&:hex) }.flatten
         items = @x * @y * @z
-        return if items == @data.length
-
-        raise 'Size mismatch loading Table from YAML'
+        unless items == @data.length
+            raise 'Size mismatch loading Table from YAML'
+        end
     end
 
-    def _dump(*_ignored)
-        [@dim, @x, @y, @z, @x * @y * @z, *@data].pack('L5 S*')
+    def _dump(*ignored)
+        return [@dim, @x, @y, @z, @x * @y * @z, *@data].pack('L5 S*')
     end
 
     def self._load(bytes)
@@ -86,8 +86,8 @@ class Color
         @r, @g, @b, @a = *bytes.unpack('D4')
     end
 
-    def _dump(*_ignored)
-        [@r, @g, @b, @a].pack('D4')
+    def _dump(*ignored)
+        return [@r, @g, @b, @a].pack('D4')
     end
 
     def self._load(bytes)
@@ -100,8 +100,8 @@ class Tone
         @r, @g, @b, @a = *bytes.unpack('D4')
     end
 
-    def _dump(*_ignored)
-        [@r, @g, @b, @a].pack('D4')
+    def _dump(*ignored)
+        return [@r, @g, @b, @a].pack('D4')
     end
 
     def self._load(bytes)
@@ -114,8 +114,8 @@ class Rect
         @x, @y, @width, @height = *bytes.unpack('i4')
     end
 
-    def _dump(*_ignored)
-        [@x, @y, @width, @height].pack('i4')
+    def _dump(*ignored)
+        return [@x, @y, @width, @height].pack('i4')
     end
 
     def self._load(bytes)
@@ -125,9 +125,9 @@ end
 
 module RGSS
     def self.remove_defined_method(scope, name)
-        return unless scope.instance_methods(false).include?(name)
-
-        scope.send(:remove_method, name)
+        if scope.instance_methods(false).include?(name)
+            scope.send(:remove_method, name)
+        end
     end
 
     def self.reset_method(scope, name, method)
@@ -141,24 +141,22 @@ module RGSS
     end
 
     def self.array_to_hash(arr, &block)
-        hash = {}
-
+        h = {}
         arr.each_with_index do |val, index|
             r = block_given? ? block.call(val) : val
-            hash[index] = r unless r.nil?
+            h[index] = r unless r.nil?
         end
-
-        hash[-1] = nil if !arr.empty? && !hash.key?(last)
-
-        hash
+        if arr.length > 0
+            last = arr.length - 1
+            h[last] = nil unless h.has_key?(last)
+        end
+        return h
     end
 
     def self.hash_to_array(hash)
         arr = []
-
         hash.each { |k, v| arr[k] = v }
-
-        arr
+        return arr
     end
 
     require 'RGSS/BasicCoder'
@@ -166,10 +164,12 @@ module RGSS
 
     # creates an empty class in a potentially nested scope
     def self.process(root, name, *args)
-        if !args.empty?
+        if args.length > 0
             process(root.const_get(name), *args)
         else
-            root.const_set(name, Class.new) unless root.const_defined?(name, false)
+            unless root.const_defined?(name, false)
+                root.const_set(name, Class.new)
+            end
         end
     end
 
@@ -247,11 +247,11 @@ module RGSS
         [:Interpreter]
     ].each { |x| process(Object, *x) }
 
-    def self.setup_system(_version, options)
+    def self.setup_system(version, options)
         # convert variable and switch name arrays to a hash when serialized
         # if round_trip isn't set change version_id to fixed number
         if options[:round_trip]
-            iso = ->(val) { val }
+            iso = ->(val) { return val }
             reset_method(RPG::System, :reduce_string, iso)
             reset_method(RPG::System, :map_version, iso)
             reset_method(Game_System, :map_version, iso)
@@ -259,11 +259,10 @@ module RGSS
             reset_method(
                 RPG::System,
                 :reduce_string,
-                lambda do |str|
+                ->(str) do
                     return nil if str.nil?
-
                     stripped = str.strip
-                    stripped.empty? ? nil : stripped
+                    return stripped.empty? ? nil : stripped
                 end
             )
 
@@ -272,12 +271,12 @@ module RGSS
             reset_method(
                 RPG::System,
                 :map_version,
-                ->(_ignored) { 12_345_678 }
+                ->(ignored) { return 12_345_678 }
             )
             reset_method(
                 Game_System,
                 :map_version,
-                ->(_ignored) { 87_654_321 }
+                ->(ignored) { return 87_654_321 }
             )
         end
     end
@@ -285,7 +284,7 @@ module RGSS
     def self.setup_interpreter(version)
         # Game_Interpreter is marshalled differently in VX Ace
         if version == :ace
-            reset_method(Game_Interpreter, :marshal_dump, -> { @data })
+            reset_method(Game_Interpreter, :marshal_dump, -> { return @data })
             reset_method(
                 Game_Interpreter,
                 :marshal_load,
@@ -322,35 +321,57 @@ module RGSS
         BasicCoder.set_ivars_methods(version)
     end
 
+    FLOW_CLASSES = [Color, Tone, RPG::BGM, RPG::BGS, RPG::MoveCommand, RPG::SE]
+
+    SCRIPTS_BASE = 'Scripts'
+
+    ACE_DATA_EXT = '.rvdata2'
+    VX_DATA_EXT = '.rvdata'
+    XP_DATA_EXT = '.rxdata'
+    YAML_EXT = '.yaml'
+    RUBY_EXT = '.rb'
+
+    def self.get_data_directory(base)
+        return File.join(base, 'Data')
+    end
+
+    def self.get_yaml_directory(base)
+        return File.join(base, 'YAML')
+    end
+
+    def self.get_script_directory(base)
+        return File.join(base, 'Scripts')
+    end
+
     class Game_Switches
         include RGSS::BasicCoder
 
-        def encode(_name, value)
-            array_to_hash(value)
+        def encode(name, value)
+            return array_to_hash(value)
         end
 
-        def decode(_name, value)
-            hash_to_array(value)
+        def decode(name, value)
+            return hash_to_array(value)
         end
     end
 
     class Game_Variables
         include RGSS::BasicCoder
 
-        def encode(_name, value)
-            array_to_hash(value)
+        def encode(name, value)
+            return array_to_hash(value)
         end
 
-        def decode(_name, value)
-            hash_to_array(value)
+        def decode(name, value)
+            return hash_to_array(value)
         end
     end
 
     class Game_SelfSwitches
         include RGSS::BasicCoder
 
-        def encode(_name, value)
-            (
+        def encode(name, value)
+            return(
                 Hash[
                     value.collect do |pair|
                         key, value = pair
@@ -360,8 +381,8 @@ module RGSS
             )
         end
 
-        def decode(_name, value)
-            (
+        def decode(name, value)
+            return(
                 Hash[
                     value.collect do |pair|
                         key, value = pair
@@ -376,9 +397,11 @@ module RGSS
         include RGSS::BasicCoder
 
         def encode(name, value)
-            return map_version(value) if name == 'version_id'
-
-            value
+            if name == 'version_id'
+                return map_version(value)
+            else
+                return value
+            end
         end
     end
 

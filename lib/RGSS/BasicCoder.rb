@@ -8,8 +8,8 @@ module RGSS
             end
         end
 
-        def encode(_name, value)
-            value
+        def encode(name, value)
+            return value
         end
 
         def init_with(coder)
@@ -19,15 +19,16 @@ module RGSS
             end
         end
 
-        def decode(_name, value)
-            value
+        def decode(name, value)
+            return value
         end
 
         def ivars
-            instance_variables
+            return instance_variables
         end
 
         INCLUDED_CLASSES = []
+
         def self.included(mod)
             INCLUDED_CLASSES.push(mod)
         end
@@ -38,13 +39,13 @@ module RGSS
                     RGSS.reset_method(
                         c,
                         :ivars,
-                        -> { instance_variables }
+                        -> { return instance_variables }
                     )
                 else
                     RGSS.reset_method(
                         c,
                         :ivars,
-                        -> { instance_variables.sort }
+                        -> { return instance_variables.sort }
                     )
                 end
             end

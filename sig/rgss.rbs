@@ -1,0 +1,33 @@
+module RGSS
+    def self.get_game_type: (String) -> (String | nil)
+
+    def self.get_translated: (Integer, String, Hash[String, String]) -> (String | nil)
+
+    def self.get_variable_translated: (String) -> (String | nil)
+
+    def self.merge_map: (Object) -> Object
+
+    def self.merge_other: (Array[Object]) -> Array[Object]
+
+    def self.parse_parameter: (Integer, String) -> (String | nil)
+
+    def self.parse_variable: (String) -> (String | nil)
+
+    def self.read_map: (Array[String], String) -> void
+
+    def self.read_other: (Array[String], String) -> void
+
+    def self.read_system: (String, String) -> void
+
+    def self.read_scripts: (String, String) -> void
+
+    def self.serialize: (Symbol, string, string, Hash[untyped, untyped]) -> void
+
+    def self.write_map: (String, Array[String], String) -> void
+
+    def self.write_other: (String, Array[String], String) -> void
+
+    def self.write_system: (String, String, String) -> void
+
+    def self.write_scripts: (String, String, String) -> void
+end

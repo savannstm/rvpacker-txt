@@ -2,56 +2,54 @@ require 'RGSS'
 module RPG
     class System
         include RGSS::BasicCoder
-        HASHED_VARS = %w[variables switches].freeze
+        HASHED_VARS = %w[variables switches]
     end
 
     def self.array_to_hash(arr, &block)
-        hash = {}
-
+        h = {}
         arr.each_with_index do |val, index|
             r = block_given? ? block.call(val) : val
-            hash[index] = r unless r.nil?
+            h[index] = r unless r.nil?
         end
-
-        hash[-1] = nil if !arr.empty? && !hash.key?(last)
-
-        hash
+        if arr.length > 0
+            last = arr.length - 1
+            h[last] = nil unless h.has_key?(last)
+        end
+        return h
     end
 
     def encode(name, value)
         if HASHED_VARS.include?(name)
-            array_to_hash(value) { |val| reduce_string(val) }
+            return array_to_hash(value) { |val| reduce_string(val) }
         elsif name == 'version_id'
-            map_version(value)
+            return map_version(value)
         else
-            value
+            return value
         end
     end
 
     def decode(name, value)
-        return hash_to_array(value) if HASHED_VARS.include?(name)
-
-        value
+        if HASHED_VARS.include?(name)
+            return hash_to_array(value)
+        else
+            return value
+        end
     end
 
     class EventCommand
         def encode_with(coder)
-            coder.style = case @code
-                          when MOVE_LIST_CODE
-                              # move list
-                              Psych::Nodes::Mapping::BLOCK
-                          else
-                              Psych::Nodes::Mapping::FLOW
-                          end
-            coder['i'] = @indent
-            coder['c'] = @code
-            coder['p'] = @parameters
+            case @code
+                when MOVE_LIST_CODE
+                    # move list
+                    coder.style = Psych::Nodes::Mapping::BLOCK
+                else
+                    coder.style = Psych::Nodes::Mapping::FLOW
+            end
+            coder['i'], coder['c'], coder['p'] = @indent, @code, @parameters
         end
 
         def init_with(coder)
-            @indent = coder['i']
-            @code = coder['c']
-            @parameters = coder['p']
+            @indent, @code, @parameters = coder['i'], coder['c'], coder['p']
         end
     end
 end
