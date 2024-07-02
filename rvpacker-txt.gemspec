@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
     spec.name = 'rvpacker-txt'
-    spec.version = '1.0.0'
+    spec.version = '1.1.0'
     spec.authors = ['Howard Jeng', 'Andrew Kesterson', 'Solistra', 'Darkness9724', 'savannstm']
     spec.email = ['savannstm@gmail.com']
     spec.summary = 'Reads or writes RPG Maker XP/VX/VXAce game text to .txt files'
@@ -15,5 +15,4 @@ Gem::Specification.new do |spec|
 
     spec.add_development_dependency 'bundler', '>= 2.5.14'
     spec.add_development_dependency 'rake', '>= 13.0.6'
-    spec.add_dependency 'scanf', '>= 1.0.0'
 end

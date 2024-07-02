@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
-require('RGSS')
-require('optparse')
+require 'RGSS'
+require 'optparse'
 
+$logging = false
 opts = {}
 OptionParser.new do |options|
     options.banner = "This tool allows to parse RPG Maker project to .txt files and back.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - Parses RPG Maker game files to .txt\n    write - Writes parsed files back to their initial form\nOPTIONS:\n"
@@ -13,7 +14,7 @@ OptionParser.new do |options|
     end
 
     options.on('-l', '--log', 'Log information while processing.') do
-        opts[:log] = true
+        $logging = true
     end
 
     options.on('-s', '--shuffle NUMBER', 'At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.') do |number|
@@ -39,22 +40,21 @@ unless %w[read write].include?(opts[:action])
 end
 
 project_types = { 'vx' => :vx, 'ace' => :ace, 'xp' => :xp }
-$logging = opts[:log]
 
 directory = opts[:input_dir]
 raise "#{directory} not found" unless File.exist?(directory)
 
 data_folder = Dir.foreach(directory).find { |filename| filename.downcase == 'original' }
 data_folder = Dir.foreach(directory).find { |filename| filename.downcase == 'data' } if data_folder.nil?
-raise '"Data" directory not found within input directory.' if data_folder.nil?
+raise '"Data" or "original" directory not found within input directory.' if data_folder.nil?
 
-types = %i[vx ace xp]
+types = %w[vx ace xp]
 
 type = types.find do |_type|
     case _type
-        when 'vx'
-            break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rxdata'))
         when 'xp'
+            break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rxdata'))
+        when 'vx'
             break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rvdata'))
         when 'ace'
             break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rvdata2'))
@@ -65,12 +65,4 @@ end
 
 raise 'Couldn\'t determine project engine.' if type.nil?
 
-RGSS.serialize(
-    type,
-    opts[:action],
-    directory,
-    {
-        line_width: -1,
-        table_width: -1,
-    }
-)
+RGSS.serialize(type, opts[:action], directory)

@@ -21,11 +21,11 @@ module RGSS
 
     def self.read_scripts: (String, String) -> void
 
-    def self.serialize: (Symbol, string, string, Hash[untyped, untyped]) -> void
+    def self.serialize: (Symbol, String, String) -> void
 
-    def self.write_map: (String, Array[String], String) -> void
+    def self.write_map: (Array[String], String, String) -> void
 
-    def self.write_other: (String, Array[String], String) -> void
+    def self.write_other: (Array[String], String, String) -> void
 
     def self.write_system: (String, String, String) -> void
 

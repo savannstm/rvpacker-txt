@@ -17,63 +17,17 @@ FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TOR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 =end
-
-require 'scanf'
-
 class Table
     def initialize(bytes)
         @dim, @x, @y, @z, items, *@data = bytes.unpack('L5 S*')
-        unless items == @data.length
+
+        unless items == @data.length && @x * @y * @z == items
             raise 'Size mismatch loading Table from data'
         end
-        unless @x * @y * @z == items
-            raise 'Size mismatch loading Table from data'
-        end
     end
 
-    MAX_ROW_LENGTH = 20
-
-    def encode_with(coder)
-        coder.style = Psych::Nodes::Mapping::BLOCK
-
-        coder['dim'] = @dim
-        coder['x'] = @x
-        coder['y'] = @y
-        coder['z'] = @z
-
-        if @x * @y * @z > 0
-            stride = @x < 2 ? (@y < 2 ? @z : @y) : @x
-            rows = @data.each_slice(stride).to_a
-            if MAX_ROW_LENGTH != -1 && stride > MAX_ROW_LENGTH
-                block_length = (stride + MAX_ROW_LENGTH - 1) / MAX_ROW_LENGTH
-                row_length = (stride + block_length - 1) / block_length
-                rows =
-                    rows
-                        .collect { |x| x.each_slice(row_length).to_a }
-                        .flatten(1)
-            end
-            rows = rows.collect { |x| x.collect { |y| '%04x' % y }.join(' ') }
-            coder['data'] = rows
-        else
-            coder['data'] = []
-        end
-    end
-
-    def init_with(coder)
-        @dim = coder['dim']
-        @x = coder['x']
-        @y = coder['y']
-        @z = coder['z']
-        @data =
-            coder['data'].collect { |x| x.split(' ').collect(&:hex) }.flatten
-        items = @x * @y * @z
-        unless items == @data.length
-            raise 'Size mismatch loading Table from YAML'
-        end
-    end
-
-    def _dump(*ignored)
-        return [@dim, @x, @y, @z, @x * @y * @z, *@data].pack('L5 S*')
+    def _dump(*_ignored)
+        [@dim, @x, @y, @z, @x * @y * @z, *@data].pack('L5 S*')
     end
 
     def self._load(bytes)
@@ -86,8 +40,8 @@ class Color
         @r, @g, @b, @a = *bytes.unpack('D4')
     end
 
-    def _dump(*ignored)
-        return [@r, @g, @b, @a].pack('D4')
+    def _dump(*_ignored)
+        [@r, @g, @b, @a].pack('D4')
     end
 
     def self._load(bytes)
@@ -100,8 +54,8 @@ class Tone
         @r, @g, @b, @a = *bytes.unpack('D4')
     end
 
-    def _dump(*ignored)
-        return [@r, @g, @b, @a].pack('D4')
+    def _dump(*_ignored)
+        [@r, @g, @b, @a].pack('D4')
     end
 
     def self._load(bytes)
@@ -114,8 +68,8 @@ class Rect
         @x, @y, @width, @height = *bytes.unpack('i4')
     end
 
-    def _dump(*ignored)
-        return [@x, @y, @width, @height].pack('i4')
+    def _dump(*_ignored)
+        [@x, @y, @width, @height].pack('i4')
     end
 
     def self._load(bytes)
@@ -135,28 +89,31 @@ module RGSS
         scope.send(:define_method, name, method)
     end
 
-    def self.reset_const(scope, sym, value)
-        scope.send(:remove_const, sym) if scope.const_defined?(sym)
-        scope.send(:const_set, sym, value)
+    def self.reset_const(scope, symbol, value)
+        scope.send(:remove_const, symbol) if scope.const_defined?(symbol)
+        scope.send(:const_set, symbol, value)
     end
 
-    def self.array_to_hash(arr, &block)
-        h = {}
-        arr.each_with_index do |val, index|
-            r = block_given? ? block.call(val) : val
-            h[index] = r unless r.nil?
+    def self.array_to_hash(array, &block)
+        hash = {}
+
+        array.each_with_index do |value, index|
+            r = block_given? ? block.call(value) : value
+            hash[index] = r unless r.nil?
         end
-        if arr.length > 0
-            last = arr.length - 1
-            h[last] = nil unless h.has_key?(last)
+
+        unless array.empty?
+            last = array.length - 1
+            hash[last] = nil unless hash.has_key?(last)
         end
-        return h
+
+        hash
     end
 
     def self.hash_to_array(hash)
-        arr = []
-        hash.each { |k, v| arr[k] = v }
-        return arr
+        array = []
+        hash.each { |key, value| array[key] = value }
+        array
     end
 
     require 'RGSS/BasicCoder'
@@ -164,7 +121,7 @@ module RGSS
 
     # creates an empty class in a potentially nested scope
     def self.process(root, name, *args)
-        if args.length > 0
+        if !args.empty?
             process(root.const_get(name), *args)
         else
             unless root.const_defined?(name, false)
@@ -245,43 +202,35 @@ module RGSS
         [:Game_Screen],
         [:Game_Vehicle],
         [:Interpreter]
-    ].each { |x| process(Object, *x) }
+    ].each { |symbol_array| process(Object, *symbol_array) }
 
-    def self.setup_system(version, options)
-        # convert variable and switch name arrays to a hash when serialized
-        # if round_trip isn't set change version_id to fixed number
-        if options[:round_trip]
-            iso = ->(val) { return val }
-            reset_method(RPG::System, :reduce_string, iso)
-            reset_method(RPG::System, :map_version, iso)
-            reset_method(Game_System, :map_version, iso)
-        else
-            reset_method(
-                RPG::System,
-                :reduce_string,
-                ->(str) do
-                    return nil if str.nil?
-                    stripped = str.strip
-                    return stripped.empty? ? nil : stripped
-                end
-            )
+    def self.setup_classes(version)
+        # change version_id to fixed number
+        reset_method(
+            RPG::System,
+            :reduce_string,
+            ->(string) do
+                return nil if string.nil?
 
-            # These magic numbers should be different. If they are the same, the saved version
-            # of the map in save files will be used instead of any updated version of the map
-            reset_method(
-                RPG::System,
-                :map_version,
-                ->(ignored) { return 12_345_678 }
-            )
-            reset_method(
-                Game_System,
-                :map_version,
-                ->(ignored) { return 87_654_321 }
-            )
-        end
-    end
+                stripped = string.strip
+                stripped.empty? ? nil : stripped
+            end
+        )
 
-    def self.setup_interpreter(version)
+        # These magic numbers should be different. If they are the same, the saved version
+        # of the map in save files will be used instead of any updated version of the map
+        reset_method(
+            RPG::System,
+            :map_version,
+            ->(_ignored) { 12_345_678 }
+        )
+
+        reset_method(
+            Game_System,
+            :map_version,
+            ->(_ignored) { 87_654_321 }
+        )
+
         # Game_Interpreter is marshalled differently in VX Ace
         if version == :ace
             reset_method(Game_Interpreter, :marshal_dump, -> { return @data })
@@ -294,115 +243,36 @@ module RGSS
             remove_defined_method(Game_Interpreter, :marshal_dump)
             remove_defined_method(Game_Interpreter, :marshal_load)
         end
-    end
 
-    def self.setup_event_command(version, options)
-        # format event commands to flow style for the event codes that aren't move commands
-        if options[:round_trip]
-            reset_method(RPG::EventCommand, :clean, -> {})
-        else
-            reset_method(
-                RPG::EventCommand,
-                :clean,
-                -> { @parameters[0].rstrip! if @code == 401 }
-            )
-        end
+        reset_method(
+            RPG::EventCommand,
+            :clean,
+            -> { @parameters[0].rstrip! if @code == 401 }
+        )
+
         reset_const(
             RPG::EventCommand,
             :MOVE_LIST_CODE,
             version == :xp ? 209 : 205
         )
-    end
 
-    def self.setup_classes(version, options)
-        setup_system(version, options)
-        setup_interpreter(version)
-        setup_event_command(version, options)
-        BasicCoder.set_ivars_methods(version)
-    end
-
-    FLOW_CLASSES = [Color, Tone, RPG::BGM, RPG::BGS, RPG::MoveCommand, RPG::SE]
-
-    SCRIPTS_BASE = 'Scripts'
-
-    ACE_DATA_EXT = '.rvdata2'
-    VX_DATA_EXT = '.rvdata'
-    XP_DATA_EXT = '.rxdata'
-    YAML_EXT = '.yaml'
-    RUBY_EXT = '.rb'
-
-    def self.get_data_directory(base)
-        return File.join(base, 'Data')
-    end
-
-    def self.get_yaml_directory(base)
-        return File.join(base, 'YAML')
-    end
-
-    def self.get_script_directory(base)
-        return File.join(base, 'Scripts')
+        BasicCoder.ivars_methods_set(version)
     end
 
     class Game_Switches
         include RGSS::BasicCoder
-
-        def encode(name, value)
-            return array_to_hash(value)
-        end
-
-        def decode(name, value)
-            return hash_to_array(value)
-        end
     end
 
     class Game_Variables
         include RGSS::BasicCoder
-
-        def encode(name, value)
-            return array_to_hash(value)
-        end
-
-        def decode(name, value)
-            return hash_to_array(value)
-        end
     end
 
     class Game_SelfSwitches
         include RGSS::BasicCoder
-
-        def encode(name, value)
-            return(
-                Hash[
-                    value.collect do |pair|
-                        key, value = pair
-                        next ['%03d %03d %s' % key, value]
-                    end
-                ]
-            )
-        end
-
-        def decode(name, value)
-            return(
-                Hash[
-                    value.collect do |pair|
-                        key, value = pair
-                        next [key.scanf('%d %d %s'), value]
-                    end
-                ]
-            )
-        end
     end
 
     class Game_System
         include RGSS::BasicCoder
-
-        def encode(name, value)
-            if name == 'version_id'
-                return map_version(value)
-            else
-                return value
-            end
-        end
     end
 
     require 'RGSS/serialize'

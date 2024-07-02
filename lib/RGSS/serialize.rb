@@ -68,13 +68,13 @@ module RGSS
         nil
     end
 
-    def parse_parameter(code, parameter)
+    def self.parse_parameter(code, parameter)
         case code
             when 401, 405
                 case $game_type
                     when "lisa"
-                        match = parameter.match(/^\\et\[[0-9]+\]|\\nbt/)
-                        parameter = parameter[match[0].length..] if match
+                        match = parameter.scan(/^\\et\[[0-9]+\]|\\nbt/)
+                        parameter = parameter.slice(match[0].length) if match
                     else
                         nil
                 end
@@ -278,6 +278,12 @@ module RGSS
 
         terms.instance_variables.each do |variable|
             value = terms.instance_variable_get(variable)
+
+            if value.is_a?(String)
+                lines.add(value) unless value.empty?
+                next
+            end
+
             value.each { |string| lines.add(string) unless string.is_a?(String) && string.empty? }
         end
 
@@ -599,9 +605,14 @@ module RGSS
         terms.instance_variables.each do |variable|
             value = terms.instance_variable_get(variable)
 
-            value.each_with_index do |string, i|
-                translated = system_translation_map[string]
-                value[i] = translated unless translated.nil?
+            if value.is_a?(String)
+                translated = system_translation_map[value]
+                value = translated unless translated.nil?
+            elsif value.is_a?(Array)
+                value.each_with_index do |string, i|
+                    translated = system_translation_map[string]
+                    value[i] = translated unless translated.nil?
+                end
             end
 
             terms.instance_variable_set(variable, value)
@@ -635,18 +646,10 @@ module RGSS
         File.write("#{output_path}/#{File.basename(scripts_file)}", Marshal.dump(script_entries), mode: 'wb')
     end
 
-    def self.serialize(version, action, directory, options = {})
+    def self.serialize(engine, action, directory)
         start_time = Time.now
 
-        setup_classes(version, options)
-
-        options = options.clone
-        options[:sort] = true if %i[vx xp].include?(version)
-        options[:flow_classes] = [Color, Tone, RPG::BGM, RPG::BGS, RPG::MoveCommand, RPG::SE].freeze
-        options[:line_width] ||= 130
-
-        table_width = options[:table_width]
-        RGSS.reset_const(Table, :MAX_ROW_LENGTH, table_width || 20)
+        setup_classes(engine)
 
         absolute_path = File.realpath(directory)
 
@@ -665,14 +668,14 @@ module RGSS
         files = (
             Dir
                 .children(paths[:original_path])
-                .select { |filename| File.extname(filename) == extensions[version] }
+                .select { |filename| File.extname(filename) == extensions[engine] }
                 .map { |filename| "#{paths[:original_path]}/#{filename}" }
         )
 
         maps_files = []
         other_files = []
-        system_file = "#{paths[:original_path]}/System#{extensions[version]}"
-        scripts_file = "#{paths[:original_path]}/Scripts#{extensions[version]}"
+        system_file = "#{paths[:original_path]}/System#{extensions[engine]}"
+        scripts_file = "#{paths[:original_path]}/Scripts#{extensions[engine]}"
 
         $game_type = get_game_type(system_file)
 
