@@ -21,7 +21,7 @@ module RGSS
 
     def self.read_scripts: (String, String) -> void
 
-    def self.serialize: (Symbol, String, String) -> void
+    def self.serialize: (Symbol, String, String, String) -> void
 
     def self.write_map: (Array[String], String, String) -> void
 

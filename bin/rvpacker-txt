@@ -3,6 +3,8 @@ require 'RGSS'
 require 'optparse'
 
 $logging = false
+$no = [true, true, true, true] # 0 is whether to process maps, 1 is other, 2 is system, 3 is scripts
+
 opts = {}
 OptionParser.new do |options|
     options.banner = "This tool allows to parse RPG Maker project to .txt files and back.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - Parses RPG Maker game files to .txt\n    write - Writes parsed files back to their initial form\nOPTIONS:\n"
@@ -13,14 +15,33 @@ OptionParser.new do |options|
         opts[:input_dir] = dir
     end
 
-    options.on('-l', '--log', 'Log information while processing.') do
-        $logging = true
+    options.on('--no', "Don't process specified files.", 'Takes multiple values separated by a comma.', 'Allowed values: maps, other, system, plugins') do |files|
+        actual_files = files.split(',')
+
+        actual_files.each do |file|
+            case file
+                when "maps"
+                    $no[0] = false
+                when "other"
+                    $no[1] = false
+                when "system"
+                    $no[2] = false
+                when "scripts"
+                    $no[3] = false
+                else
+                    nil
+            end
+        end
     end
 
     options.on('-s', '--shuffle NUMBER', 'At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.') do |number|
         opts[:shuffle] = number
     end
 
+    options.on('-l', '--log', 'Log information while processing.') do
+        $logging = true
+    end
+    
     options.on_tail('-h', '--help', 'Show help message.') do
         puts options
         exit
@@ -44,20 +65,20 @@ project_types = { 'vx' => :vx, 'ace' => :ace, 'xp' => :xp }
 directory = opts[:input_dir]
 raise "#{directory} not found" unless File.exist?(directory)
 
-data_folder = Dir.foreach(directory).find { |filename| filename.downcase == 'original' }
-data_folder = Dir.foreach(directory).find { |filename| filename.downcase == 'data' } if data_folder.nil?
-raise '"Data" or "original" directory not found within input directory.' if data_folder.nil?
+original_directory = Dir.foreach(directory).find { |filename| filename.downcase == 'original' } ||
+    Dir.foreach(directory).find { |filename| filename.downcase == 'data' }
+raise '"Data" or "original" directory not found within input directory.' if original_directory.nil?
 
 types = %w[vx ace xp]
 
-type = types.find do |_type|
-    case _type
+type = types.find do |type_|
+    case type_
         when 'xp'
-            break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rxdata'))
+            break project_types[type_] if File.exist?(File.join(directory, original_directory, 'System.rxdata'))
         when 'vx'
-            break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rvdata'))
+            break project_types[type_] if File.exist?(File.join(directory, original_directory, 'System.rvdata'))
         when 'ace'
-            break project_types[_type] if File.exist?(File.join(directory, data_folder, 'System.rvdata2'))
+            break project_types[type_] if File.exist?(File.join(directory, original_directory, 'System.rvdata2'))
         else
             break nil
     end
@@ -65,4 +86,4 @@ end
 
 raise 'Couldn\'t determine project engine.' if type.nil?
 
-RGSS.serialize(type, opts[:action], directory)
+RGSS.serialize(type, opts[:action], directory, original_directory)

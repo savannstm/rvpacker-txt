@@ -50,6 +50,10 @@ class IndexedSet
     def length
         @index.length
     end
+
+    def empty?
+        @index.empty?
+    end
 end
 
 module RGSS
@@ -156,11 +160,9 @@ module RGSS
                                             lines[0].add(parsed) unless parsed.nil?
                                         end
                                     end
-                                elsif code == 356
-                                    if parameter.is_a?(String) && !parameter.empty?
-                                        parsed = parse_parameter(code, parameter)
-                                        lines[0].add(parsed.gsub(/\r?\n/, '\#')) unless parsed.nil?
-                                    end
+                                elsif code == 356 && parameter.is_a?(String) && !parameter.empty?
+                                    parsed = parse_parameter(code, parameter)
+                                    lines[0].add(parsed.gsub(/\r?\n/, '\#')) unless parsed.nil?
                                 end
                             end
                         end
@@ -172,9 +174,9 @@ module RGSS
         end
 
         File.write("#{output_path}/maps.txt", lines[0].join("\n"))
-        File.write("#{output_path}/maps_trans.txt", "\n" * (lines[0].length.positive? ? lines[0].length - 1 : 0))
+        File.write("#{output_path}/maps_trans.txt", "\n" * (!lines[0].empty? ? lines[0].length - 1 : 0))
         File.write("#{output_path}/names.txt", lines[1].join("\n"))
-        File.write("#{output_path}/names_trans.txt", "\n" * (lines[1].length.positive? ? lines[1].length - 1 : 0))
+        File.write("#{output_path}/names_trans.txt", "\n" * (!lines[1].empty? ? lines[1].length - 1 : 0))
     end
 
     def self.read_other(original_other_files, output_path)
@@ -250,7 +252,7 @@ module RGSS
             puts "Parsed #{filename}" if $logging
 
             File.write("#{output_path}/#{processed_filename}.txt", lines.join("\n"))
-            File.write("#{output_path}/#{processed_filename}_trans.txt", "\n" * (lines.length.positive? ? lines.length - 1 : 0))
+            File.write("#{output_path}/#{processed_filename}_trans.txt", "\n" * (!lines.empty? ? lines.length - 1 : 0))
         end
     end
 
@@ -292,21 +294,74 @@ module RGSS
         puts "Parsed #{filename}" if $logging
 
         File.write("#{output_path}/#{basename}.txt", lines.join("\n"), mode: 'wb')
-        File.write("#{output_path}/#{basename}_trans.txt", "\n" * (lines.length.positive? ? lines.length - 1 : 0),
+        File.write("#{output_path}/#{basename}_trans.txt", "\n" * (!lines.empty? ? lines.length - 1 : 0),
                    mode: 'wb')
+    end
+
+    def self.extract_quoted_strings(input)
+        result = []
+        in_quotes = false
+        quote_type = nil
+        buffer = []
+
+        input.each_char.with_index do |char, index|
+            if char == '#' && (index == 0 || input[index - 1] == "\n")
+                index = input.index("\n", index) || input.length
+                next
+            end
+
+            if char == '"' || char == "'"
+                if in_quotes
+                    if char == quote_type
+                        result.push(buffer.join)
+                        buffer.clear
+                        in_quotes = false
+                        quote_type = nil
+                    else
+                        buffer.push(char)
+                    end
+                else
+                    in_quotes = true
+                    quote_type = char
+                end
+
+                next
+            end
+
+            if in_quotes
+                if char != "\r"
+                    if char == "\n"
+                        buffer.push('\#')
+                        next
+                    end
+
+                    buffer.push(char)
+                end
+            end
+        end
+
+        result
     end
 
     def self.read_scripts(scripts_file_path, output_path)
         script_entries = Marshal.load(File.read(scripts_file_path, mode: 'rb'))
-        strings = []
+        strings = IndexedSet.new
 
         script_entries.each do |script|
             code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
-            code.scan(/".*"/) { |string| strings.push(string) }
+
+            extract_quoted_strings(code).each do |string|
+                next if string.strip! || (string.empty? || string.delete('　　').empty?)
+
+                next if string.start_with?(/(#|\!?\$|@|(Graphics|Data|Audio|CG|Movies)\/)/) ||
+                    string.match?(/^\d+$|^(.)\1{2,}$|^false|true$|^(wb|rb)$|^[A-Za-z0-9\-]+$|^[\.\(\)\+\-:;\|\[\]\^~%&!\*\/→×？\?ｘ％▼]$|#\{|\\(?!#)|\+?=?=|\{|\}|_|r[vx]data|[<>]|\.split/) ||
+
+                    strings.add(string)
+            end
         end
 
         File.write("#{output_path}/scripts.txt", strings.join("\n"), mode: 'wb')
-        File.write("#{output_path}/scripts_trans.txt", "\n" * (strings.length.positive? ? strings.length - 1 : 0), mode: 'wb')
+        File.write("#{output_path}/scripts_trans.txt", "\n" * (!strings.empty? ? strings.length - 1 : 0), mode: 'wb')
     end
 
     def self.merge_seq(object_array)
@@ -363,7 +418,7 @@ module RGSS
             end
         end
 
-        return object
+        object
     end
 
     def self.merge_other(object_array)
@@ -386,6 +441,8 @@ module RGSS
                 object.instance_variable_set(:@list, merge_seq(list))
             end
         end
+
+        object_array
     end
 
     def self.get_translated(code, parameter, hashmap)
@@ -646,7 +703,7 @@ module RGSS
         File.write("#{output_path}/#{File.basename(scripts_file)}", Marshal.dump(script_entries), mode: 'wb')
     end
 
-    def self.serialize(engine, action, directory)
+    def self.serialize(engine, action, directory, original_directory)
         start_time = Time.now
 
         setup_classes(engine)
@@ -654,7 +711,7 @@ module RGSS
         absolute_path = File.realpath(directory)
 
         paths = {
-            original_path: File.join(absolute_path, 'Data'),
+            original_path: File.join(absolute_path, original_directory),
             translation_path: File.join(absolute_path, 'translation'),
             maps_path: File.join(absolute_path, 'translation/maps'),
             other_path: File.join(absolute_path, 'translation/other'),
@@ -690,15 +747,15 @@ module RGSS
         end
 
         if action == 'read'
-            read_map(maps_files, paths[:maps_path])
-            read_other(other_files, paths[:other_path])
-            read_system(system_file, paths[:other_path])
-            read_scripts(scripts_file, paths[:other_path])
+            read_map(maps_files, paths[:maps_path]) unless $no[0]
+            read_other(other_files, paths[:other_path]) unless $no[1]
+            read_system(system_file, paths[:other_path]) unless $no[2]
+            read_scripts(scripts_file, paths[:other_path]) unless $no[3]
         else
-            write_map(maps_files, paths[:maps_path], paths[:output_path])
-            write_other(other_files, paths[:other_path], paths[:output_path])
-            write_system(system_file, paths[:other_path], paths[:output_path])
-            write_scripts(scripts_file, paths[:other_path], paths[:output_path])
+            write_map(maps_files, paths[:maps_path], paths[:output_path]) unless $no[0]
+            write_other(other_files, paths[:other_path], paths[:output_path]) unless $no[1]
+            write_system(system_file, paths[:other_path], paths[:output_path]) unless $no[2]
+            write_scripts(scripts_file, paths[:other_path], paths[:output_path]) unless $no[3]
         end
 
         puts "Done in #{(Time.now - start_time)}"

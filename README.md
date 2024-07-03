@@ -20,6 +20,8 @@ Usage
 
 ```
 $ rvpacker-txt -h
+This tool allows to parse RPG Maker project to .txt files and back.
+
 Usage: rvpacker-txt COMMAND [options]
 
 COMMANDS:
@@ -29,15 +31,18 @@ OPTIONS:
     -d, --input-dir DIRECTORY        Input directory of RPG Maker project.
                                      Must contain "Data" or "original" folder to read,
                                      and additionally "translation" with "maps" and  "other" subdirectories to write.
-    -l, --log                        Log information while processing.
+        --no                         Don't process specified files.
+                                     Takes multiple values separated by a comma.
+                                     Allowed values: maps, other, system, plugins
     -s, --shuffle NUMBER             At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.
+    -l, --log                        Log information while processing.
     -h, --help                       Show help message.
 ```
 
 For example, to read a RPG Maker VX Ace project in E:/Documents/RPGMakerGame to .txt files:
 
 ```
-$ rvpacker read --input-dir E:/Documents/RPGMakerGame
+$ rvpacker-txt read --input-dir E:/Documents/RPGMakerGame
 ```
 
 Program determines game engine automatically.
@@ -49,7 +54,7 @@ Lines from Scripts file will be parsed into translation/other/scripts.txt file a
 To write previously parsed project back to its initial form:
 
 ```
-$ rvpacker write --input-dir E:/Documents/RPGMakerGame
+$ rvpacker-txt write --input-dir E:/Documents/RPGMakerGame
 ```
 
 This will take all of translation lines from _trans files from the translation subdirectories and repack all of them
