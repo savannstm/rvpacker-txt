@@ -3,6 +3,7 @@ require 'RGSS'
 require 'optparse'
 
 $logging = false
+$shuffle = 0
 $no = [true, true, true, true] # 0 is whether to process maps, 1 is other, 2 is system, 3 is scripts
 
 opts = {}
@@ -35,13 +36,13 @@ OptionParser.new do |options|
     end
 
     options.on('-s', '--shuffle NUMBER', 'At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.') do |number|
-        opts[:shuffle] = number
+        $shuffle = number
     end
 
     options.on('-l', '--log', 'Log information while processing.') do
         $logging = true
     end
-    
+
     options.on_tail('-h', '--help', 'Show help message.') do
         puts options
         exit

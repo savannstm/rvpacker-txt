@@ -234,7 +234,7 @@ module RGSS
 
         # Game_Interpreter is marshalled differently in VX Ace
         if version == :ace
-            reset_method(Game_Interpreter, :marshal_dump, -> { return @data })
+            reset_method(Game_Interpreter, :marshal_dump, -> { @data })
             reset_method(
                 Game_Interpreter,
                 :marshal_load,

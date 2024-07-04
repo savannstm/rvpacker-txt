@@ -78,7 +78,7 @@ module RGSS
                 case $game_type
                     when "lisa"
                         match = parameter.scan(/^\\et\[[0-9]+\]|\\nbt/)
-                        parameter = parameter.slice(match[0].length) if match
+                        parameter = parameter.slice((match[0].length)..) if match
                     else
                         nil
                 end
@@ -181,7 +181,11 @@ module RGSS
 
     def self.read_other(original_other_files, output_path)
         object_array_map = Hash[original_other_files.map do |filename|
-            [File.basename(filename), Marshal.load(File.read(filename, mode: 'rb'))]
+            basename = File.basename(filename)
+            object = Marshal.load(File.read(filename, mode: 'rb'))
+            object = merge_other(object).slice(1..) if basename.start_with?(/Common|Troops/)
+
+            [basename, object]
         end]
 
         object_array_map.each do |filename, object_array|
@@ -298,43 +302,56 @@ module RGSS
                    mode: 'wb')
     end
 
+    def self.shuffle_words(array)
+        array.map do |string|
+            re = /\S+/
+            words = string.scan(re)
+            words.shuffle
+
+            result = nil
+
+            (0..(words.length)).each do |i|
+                result = string.sub(string[i], words[i])
+            end
+
+            result
+        end
+    end
+
     def self.extract_quoted_strings(input)
         result = []
+
+        skip_block = false
         in_quotes = false
         quote_type = nil
         buffer = []
 
-        input.each_char.with_index do |char, index|
-            if char == '#' && (index == 0 || input[index - 1] == "\n")
-                index = input.index("\n", index) || input.length
-                next
-            end
+        input.each_line(chomp: true) do |line|
+            line.strip!
+            next if line[0] == '#' || line.start_with?(/(Win|Lose)|_Fanfare/)
 
-            if char == '"' || char == "'"
-                if in_quotes
-                    if char == quote_type
-                        result.push(buffer.join)
-                        buffer.clear
-                        in_quotes = false
-                        quote_type = nil
-                    else
+            skip_block = true if line.start_with?("=begin")
+            skip_block = false if line.start_with?("=end")
+
+            next if skip_block
+
+            buffer.push('\#') if in_quotes
+
+            line.each_char do |char|
+                if char == "'" || char == '"'
+                    if !quote_type.nil? && char != quote_type
                         buffer.push(char)
-                    end
-                else
-                    in_quotes = true
-                    quote_type = char
-                end
-
-                next
-            end
-
-            if in_quotes
-                if char != "\r"
-                    if char == "\n"
-                        buffer.push('\#')
                         next
                     end
 
+                    quote_type = char
+                    in_quotes = !in_quotes
+                    result.push(buffer.join)
+                    buffer.clear
+                    next
+                end
+
+                if in_quotes
                     buffer.push(char)
                 end
             end
@@ -346,20 +363,46 @@ module RGSS
     def self.read_scripts(scripts_file_path, output_path)
         script_entries = Marshal.load(File.read(scripts_file_path, mode: 'rb'))
         strings = IndexedSet.new
+        codes = []
 
         script_entries.each do |script|
             code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
+            codes.push(code)
 
             extract_quoted_strings(code).each do |string|
-                next if string.strip! || (string.empty? || string.delete('　　').empty?)
+                string.strip!
 
-                next if string.start_with?(/(#|\!?\$|@|(Graphics|Data|Audio|CG|Movies)\/)/) ||
-                    string.match?(/^\d+$|^(.)\1{2,}$|^false|true$|^(wb|rb)$|^[A-Za-z0-9\-]+$|^[\.\(\)\+\-:;\|\[\]\^~%&!\*\/→×？\?ｘ％▼]$|#\{|\\(?!#)|\+?=?=|\{|\}|_|r[vx]data|[<>]|\.split/) ||
+                next if string.empty? || string.delete('　　').empty?
 
-                    strings.add(string)
+                # Maybe this mess will remove something that mustn't be removed, but it needs to be tested
+                next if string.start_with?(/(#|!?\$|@|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
+                    string.match?(/^\d+$/) ||
+                    string.match?(/^(.)\1{2,}$/) ||
+                    string.match?(/^(false|true)$/) ||
+                    string.match?(/^(wb|rb)$/) ||
+                    string.match?(/^(?=.*\d)[A-Za-z0-9\-]+$/) ||
+                    string.match?(/^[A-Z\-()\/ +'&]*$/) ||
+                    string.match?(/^[a-z\-()\/ +'&]*$/) ||
+                    string.match?(/^[A-Za-z]+[+-]$/) ||
+                    string.match?(/^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼|]$/) ||
+                    string.match?(/^Tile.*[A-Z]$/) ||
+                    string.match?(/^:?%.*[ds][:%]*?$/) ||
+                    string.match?(/^[a-zA-Z]+([A-Z][a-z]*)+$/) ||
+                    string.match?(/\.(mp3|ogg|jpg|png|ini)$/) ||
+                    string.match?(/#\{/) ||
+                    string.match?(/\\(?!#)/) ||
+                    string.match?(/\+?=?=/) ||
+                    string.match?(/[}{_<>]/) ||
+                    string.match?(/r[vx]data/) ||
+                    string.match?(/\/(\d.*)?$/) ||
+                    string.match?(/FILE$/) ||
+                    string.match?(/No such file or directory|level \*\*|Courier New|Comic Sans|Lucida|Verdana|Tahoma|Arial|Player start location|Common event call has exceeded|se-|Start Pos|An error has occurred|Define it first|Process Skill|Wpn Only|Don't Wait|Clear image|Can Collapse|^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/)
+
+                strings.add(string)
             end
         end
 
+        File.write("#{output_path}/scripts_plain.txt", codes.join("\n"), mode: 'wb')
         File.write("#{output_path}/scripts.txt", strings.join("\n"), mode: 'wb')
         File.write("#{output_path}/scripts_trans.txt", "\n" * (!strings.empty? ? strings.length - 1 : 0), mode: 'wb')
     end
@@ -434,6 +477,8 @@ module RGSS
 
                     page.instance_variable_set(:@list, merge_seq(list))
                 end
+
+                object.instance_variable_set(:@pages, pages)
             else
                 list = object.instance_variable_get(:@list)
                 next unless list.is_a?(Array)
@@ -446,12 +491,15 @@ module RGSS
     end
 
     def self.get_translated(code, parameter, hashmap)
+        lisa_start = nil
+
         case code
             when 401, 356, 405
                 case $game_type
                     when "lisa"
                         match = parameter.scan(/^\\et\[[0-9]+\]/) || parameter.scan(/^\\nbt/)
-                        parameter = parameter.slice(match[0].length) unless match.nil?
+                        lisa_start = match[0]
+                        parameter = parameter.slice((match[0].length)..) unless match.nil?
                     else
                         nil
                 end
@@ -461,7 +509,16 @@ module RGSS
                 nil
         end
 
-        return hashmap[parameter]
+        gotten = hashmap[parameter]
+
+        case $game_type
+            when "lisa"
+                gotten = lisa_start + gotten unless lisa_start.nil?
+            else
+                nil
+        end
+
+        gotten
     end
 
     def self.get_variable_translated(variable, hashmap)
@@ -487,6 +544,16 @@ module RGSS
 
         names_translated_text = File.read("#{maps_path}/names_trans.txt").split("\n").map do |line|
             line.gsub('\#', "\n")
+        end
+
+        if $shuffle > 0
+            maps_translated_text.shuffle!
+            names_translated_text.shuffle!
+
+            if $shuffle == 2
+                maps_translated_text = shuffle_words(maps_translated_text)
+                names_translated_text = shuffle_words(names_translated_text)
+            end
         end
 
         maps_translation_map = Hash[maps_original_text.zip(maps_translated_text)].freeze
@@ -546,7 +613,7 @@ module RGSS
         object_array_map = Hash[original_files.map do |filename|
             basename = File.basename(filename)
             object = Marshal.load(File.read(filename, mode: 'rb'))
-            object = merge_other(object)[1..] if basename.start_with?(/Common|Troops/)
+            object = merge_other(object).slice(1..) if basename.start_with?(/Common|Troops/)
 
             [basename, object]
         end]
@@ -567,18 +634,31 @@ module RGSS
                 line.gsub('\#', "\n")
             end
 
+            if $shuffle > 0
+                other_translated_text.shuffle!
+
+                if $shuffle == 2
+                    other_translated_text = shuffle_words(other_translated_text)
+                end
+            end
+
             other_translation_map = Hash[other_original_text.zip(other_translated_text)]
 
             if !filename.start_with?(/Common|Troops/)
                 object_array.each do |object|
                     next if object.nil?
 
-                    name = object.instance_variable_get(:@name)
-                    nickname = object.instance_variable_get(:@nickname)
-                    description = object.instance_variable_get(:@description)
-                    note = object.instance_variable_get(:@note)
+                    variables_symbols = %i[@name @nickname @description @note]
 
-                    [[:@name, name], [:@nickname, nickname], [:@description, description], [:@note, note]].each do |symbol, variable|
+                    name = object.instance_variable_get(variables_symbols[0])
+                    nickname = object.instance_variable_get(variables_symbols[1])
+                    description = object.instance_variable_get(variables_symbols[2])
+                    note = object.instance_variable_get(variables_symbols[3])
+
+                    [[variables_symbols[0], name],
+                     [variables_symbols[1], nickname],
+                     [variables_symbols[2], description],
+                     [variables_symbols[3], note]].each do |symbol, variable|
                         if variable.is_a?(String) && !variable.empty?
                             translated = get_variable_translated(variable, other_translation_map)
                             object.instance_variable_set(symbol, variable) unless translated.nil?
@@ -634,6 +714,14 @@ module RGSS
         system_original_text = File.read("#{other_path}/system.txt").split("\n")
         system_translated_text = File.read("#{other_path}/system_trans.txt").split("\n")
 
+        if $shuffle > 0
+            system_translated_text.shuffle!
+
+            if $shuffle == 2
+                system_translated_text = shuffle_words(system_translated_text)
+            end
+        end
+
         system_translation_map = Hash[system_original_text.zip(system_translated_text)]
 
         symbols = %i[@elements @skill_types @weapon_types @armor_types]
@@ -684,19 +772,30 @@ module RGSS
 
         puts "Written #{basename}" if $logging
 
-        File.write("#{output_path}/#{basename}", Marshal.dump(object), mode: 'wb')
+        File.write("#{output_path}/ #{basename}", Marshal.dump(object), mode: 'wb')
     end
 
     def self.write_scripts(scripts_file, other_path, output_path)
         script_entries = Marshal.load(File.read(scripts_file, mode: 'rb'))
-        strings_original = File.read("#{other_path}/scripts.txt", mode: 'rb').split("\n").map { |line| line.gsub('\#', "\r\n") }
-        strings = File.read("#{other_path}/scripts_trans.txt", mode: 'rb').split("\n").map { |line| line.gsub('\#', "\r\n") }
+        original_strings = File.read("#{other_path}/scripts.txt", mode: 'rb')
+                               .force_encoding('UTF-8')
+                               .split("\n")
+                               .map { |line| line.gsub('\#', "\r\n") }
 
-        scripts_translation_map = Hash[strings_original.zip(strings)]
+        translation_strings = File.read("#{other_path}/scripts_trans.txt", mode: 'rb')
+                                  .force_encoding('UTF-8')
+                                  .split("\n")
+                                  .map { |line| line.gsub('\#', "\r\n") }
 
-        script_entries.each_with_index do |script, i|
+        # Shuffle can possibly break the game in scripts, so no shuffling
+
+        script_entries.each do |script|
             code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
-            code.gsub(/".*"/, scripts_translation_map[strings[i]]) if scripts_translation_map.key?(strings[i])
+
+            original_strings.zip(translation_strings).each do |original, translated|
+                code.gsub!(original, translated) unless translated.nil?
+            end
+
             script[2] = Zlib::Deflate.deflate(code, Zlib::BEST_COMPRESSION)
         end
 
@@ -747,15 +846,15 @@ module RGSS
         end
 
         if action == 'read'
-            read_map(maps_files, paths[:maps_path]) unless $no[0]
-            read_other(other_files, paths[:other_path]) unless $no[1]
-            read_system(system_file, paths[:other_path]) unless $no[2]
-            read_scripts(scripts_file, paths[:other_path]) unless $no[3]
+            read_map(maps_files, paths[:maps_path]) if $no[0]
+            read_other(other_files, paths[:other_path]) if $no[1]
+            read_system(system_file, paths[:other_path]) if $no[2]
+            read_scripts(scripts_file, paths[:other_path]) if $no[3]
         else
-            write_map(maps_files, paths[:maps_path], paths[:output_path]) unless $no[0]
-            write_other(other_files, paths[:other_path], paths[:output_path]) unless $no[1]
-            write_system(system_file, paths[:other_path], paths[:output_path]) unless $no[2]
-            write_scripts(scripts_file, paths[:other_path], paths[:output_path]) unless $no[3]
+            write_map(maps_files, paths[:maps_path], paths[:output_path]) if $no[0]
+            write_other(other_files, paths[:other_path], paths[:output_path]) if $no[1]
+            write_system(system_file, paths[:other_path], paths[:output_path]) if $no[2]
+            write_scripts(scripts_file, paths[:other_path], paths[:output_path]) if $no[3]
         end
 
         puts "Done in #{(Time.now - start_time)}"
