@@ -65,8 +65,8 @@ module RGSS
 
         game_title.downcase!
 
-        if game_title.include?("lisa")
-            return "lisa"
+        if game_title.include?('lisa')
+            return 'lisa'
         end
 
         nil
@@ -76,8 +76,8 @@ module RGSS
         case code
             when 401, 405
                 case $game_type
-                    when "lisa"
-                        match = parameter.scan(/^\\et\[[0-9]+\]|\\nbt/)
+                    when 'lisa'
+                        match = parameter.scan(/^(\\et\[[0-9]+\]|\\nbt)/)
                         parameter = parameter.slice((match[0].length)..) if match
                     else
                         nil
@@ -98,7 +98,7 @@ module RGSS
             variable = variable.gsub(/\r?\n/, '\#')
 
             case $game_type
-                when "lisa"
+                when 'lisa'
                     unless variable.split('\#').all? { |line| line.match?(/^<.*>\.?$/) || line.length.nil? }
                         return nil
                     end
@@ -119,7 +119,7 @@ module RGSS
 
         object_map.each do |filename, object|
             display_name = object.instance_variable_get(:@display_name)
-            lines[1].add(display_name) unless display_name.nil? || display_name.empty?
+            lines[1].add(display_name) if display_name.is_a?(String) && !display_name.empty?
 
             events = object.instance_variable_get(:@events)
             next if events.nil?
@@ -174,9 +174,9 @@ module RGSS
         end
 
         File.write("#{output_path}/maps.txt", lines[0].join("\n"))
-        File.write("#{output_path}/maps_trans.txt", "\n" * (!lines[0].empty? ? lines[0].length - 1 : 0))
+        File.write("#{output_path}/maps_trans.txt", "\n" * (lines[0].empty? ? 0 : lines[0].length - 1))
         File.write("#{output_path}/names.txt", lines[1].join("\n"))
-        File.write("#{output_path}/names_trans.txt", "\n" * (!lines[1].empty? ? lines[1].length - 1 : 0))
+        File.write("#{output_path}/names_trans.txt", "\n" * (lines[1].empty? ? 0 : lines[1].length - 1))
     end
 
     def self.read_other(original_other_files, output_path)
@@ -256,7 +256,7 @@ module RGSS
             puts "Parsed #{filename}" if $logging
 
             File.write("#{output_path}/#{processed_filename}.txt", lines.join("\n"))
-            File.write("#{output_path}/#{processed_filename}_trans.txt", "\n" * (!lines.empty? ? lines.length - 1 : 0))
+            File.write("#{output_path}/#{processed_filename}_trans.txt", "\n" * (lines.empty? ? 0 : lines.length - 1))
         end
     end
 
@@ -298,7 +298,7 @@ module RGSS
         puts "Parsed #{filename}" if $logging
 
         File.write("#{output_path}/#{basename}.txt", lines.join("\n"), mode: 'wb')
-        File.write("#{output_path}/#{basename}_trans.txt", "\n" * (!lines.empty? ? lines.length - 1 : 0),
+        File.write("#{output_path}/#{basename}_trans.txt", "\n" * (lines.empty? ? 0 : lines.length - 1),
                    mode: 'wb')
     end
 
@@ -308,17 +308,15 @@ module RGSS
             words = string.scan(re)
             words.shuffle
 
-            result = nil
-
             (0..(words.length)).each do |i|
-                result = string.sub(string[i], words[i])
+                string.sub!(string[i], words[i])
             end
 
-            result
+            string
         end
     end
 
-    def self.extract_quoted_strings(input)
+    def self.extract_quoted_strings(string)
         result = []
 
         skip_block = false
@@ -326,12 +324,12 @@ module RGSS
         quote_type = nil
         buffer = []
 
-        input.each_line(chomp: true) do |line|
+        string.each_line(chomp: true) do |line|
             line.strip!
             next if line[0] == '#' || line.start_with?(/(Win|Lose)|_Fanfare/)
 
-            skip_block = true if line.start_with?("=begin")
-            skip_block = false if line.start_with?("=end")
+            skip_block = true if line.start_with?('=begin')
+            skip_block = false if line.start_with?('=end')
 
             next if skip_block
 
@@ -339,7 +337,7 @@ module RGSS
 
             line.each_char do |char|
                 if char == "'" || char == '"'
-                    if !quote_type.nil? && char != quote_type
+                    unless quote_type.nil? || char == quote_type
                         buffer.push(char)
                         next
                     end
@@ -375,11 +373,11 @@ module RGSS
                 next if string.empty? || string.delete('　　').empty?
 
                 # Maybe this mess will remove something that mustn't be removed, but it needs to be tested
-                next if string.start_with?(/(#|!?\$|@|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
+                next if string.start_with?(/([#!?$@]|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
                     string.match?(/^\d+$/) ||
                     string.match?(/^(.)\1{2,}$/) ||
                     string.match?(/^(false|true)$/) ||
-                    string.match?(/^(wb|rb)$/) ||
+                    string.match?(/^[wr]b$/) ||
                     string.match?(/^(?=.*\d)[A-Za-z0-9\-]+$/) ||
                     string.match?(/^[A-Z\-()\/ +'&]*$/) ||
                     string.match?(/^[a-z\-()\/ +'&]*$/) ||
@@ -388,15 +386,16 @@ module RGSS
                     string.match?(/^Tile.*[A-Z]$/) ||
                     string.match?(/^:?%.*[ds][:%]*?$/) ||
                     string.match?(/^[a-zA-Z]+([A-Z][a-z]*)+$/) ||
+                    string.match?(/^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/) ||
                     string.match?(/\.(mp3|ogg|jpg|png|ini)$/) ||
+                    string.match?(/\/(\d.*)?$/) ||
+                    string.match?(/FILE$/) ||
                     string.match?(/#\{/) ||
                     string.match?(/\\(?!#)/) ||
                     string.match?(/\+?=?=/) ||
                     string.match?(/[}{_<>]/) ||
                     string.match?(/r[vx]data/) ||
-                    string.match?(/\/(\d.*)?$/) ||
-                    string.match?(/FILE$/) ||
-                    string.match?(/No such file or directory|level \*\*|Courier New|Comic Sans|Lucida|Verdana|Tahoma|Arial|Player start location|Common event call has exceeded|se-|Start Pos|An error has occurred|Define it first|Process Skill|Wpn Only|Don't Wait|Clear image|Can Collapse|^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/)
+                    string.match?(/No such file or directory|level \*\*|Courier New|Comic Sans|Lucida|Verdana|Tahoma|Arial|Player start location|Common event call has exceeded|se-|Start Pos|An error has occurred|Define it first|Process Skill|Wpn Only|Don't Wait|Clear image|Can Collapse/)
 
                 strings.add(string)
             end
@@ -404,7 +403,7 @@ module RGSS
 
         File.write("#{output_path}/scripts_plain.txt", codes.join("\n"), mode: 'wb')
         File.write("#{output_path}/scripts.txt", strings.join("\n"), mode: 'wb')
-        File.write("#{output_path}/scripts_trans.txt", "\n" * (!strings.empty? ? strings.length - 1 : 0), mode: 'wb')
+        File.write("#{output_path}/scripts_trans.txt", "\n" * (strings.empty? ? 0 : strings.length - 1), mode: 'wb')
     end
 
     def self.merge_seq(object_array)
@@ -428,7 +427,7 @@ module RGSS
             elsif i.positive? && in_sequence && !first.nil? && !number.negative?
                 parameters = object_array[first].instance_variable_get(:@parameters)
                 parameters[0] = string_array.join("\n")
-                object_array[first].instance_variable_set(parameters)
+                object_array[first].instance_variable_set(:@parameters, parameters)
 
                 start_index = first + 1
                 items_to_delete = start_index + number
@@ -496,8 +495,8 @@ module RGSS
         case code
             when 401, 356, 405
                 case $game_type
-                    when "lisa"
-                        match = parameter.scan(/^\\et\[[0-9]+\]/) || parameter.scan(/^\\nbt/)
+                    when 'lisa'
+                        match = parameter.scan(/^(\\et\[[0-9]+\]|\\nbt)/)
                         lisa_start = match[0]
                         parameter = parameter.slice((match[0].length)..) unless match.nil?
                     else
@@ -512,7 +511,7 @@ module RGSS
         gotten = hashmap[parameter]
 
         case $game_type
-            when "lisa"
+            when 'lisa'
                 gotten = lisa_start + gotten unless lisa_start.nil?
             else
                 nil
@@ -563,7 +562,8 @@ module RGSS
 
         object_map.each do |filename, object|
             display_name = object.instance_variable_get(:@display_name)
-            object.instance_variable_set(:@display_name, names_translation_map[display_name]) if names_translation_map.key?(display_name)
+            display_name_gotten = names_translation_map[display_name]
+            object.instance_variable_set(:@display_name, display_name_gotten) unless display_name_gotten.nil?
 
             events = object.instance_variable_get(:@events)
             next if events.nil?
@@ -623,16 +623,14 @@ module RGSS
         object_array_map.each do |filename, object_array|
             processed_filename = File.basename(filename, '.*').downcase
 
-            other_original_text = File.read("#{File.join(other_path, processed_filename)}.txt").split("\n").map do
-            |line|
-                line.gsub('\#', "\n")
-            end
+            other_original_text = File.read("#{File.join(other_path, processed_filename)}.txt")
+                                      .split("\n")
+                                      .map { |line| line.gsub('\#', "\n") }
+                                      .freeze
 
-            other_translated_text = File.read("#{File.join(other_path, processed_filename)}_trans.txt").split("\n")
-                                        .map do
-            |line|
-                line.gsub('\#', "\n")
-            end
+            other_translated_text = File.read("#{File.join(other_path, processed_filename)}_trans.txt")
+                                        .split("\n")
+                                        .map { |line| line.gsub('\#', "\n") }
 
             if $shuffle > 0
                 other_translated_text.shuffle!
@@ -642,13 +640,13 @@ module RGSS
                 end
             end
 
-            other_translation_map = Hash[other_original_text.zip(other_translated_text)]
+            other_translation_map = Hash[other_original_text.zip(other_translated_text)].freeze
 
             if !filename.start_with?(/Common|Troops/)
                 object_array.each do |object|
                     next if object.nil?
 
-                    variables_symbols = %i[@name @nickname @description @note]
+                    variables_symbols = %i[@name @nickname @description @note].freeze
 
                     name = object.instance_variable_get(variables_symbols[0])
                     nickname = object.instance_variable_get(variables_symbols[1])
@@ -686,7 +684,7 @@ module RGSS
                                         parameters[i] = translated unless translated.nil?
                                     end
                                 elsif parameter.is_a?(Array)
-                                    parameter.each_with_index.map do |subparameter, j|
+                                    parameter.each_with_index do |subparameter, j|
                                         if subparameter.is_a?(String) && !subparameter.empty?
                                             translated = get_translated(code, subparameter, other_translation_map)
                                             parameters[i][j] = translated unless translated.nil?
@@ -711,8 +709,11 @@ module RGSS
         basename = File.basename(system_file_path)
         object = Marshal.load(File.read(system_file_path, mode: 'rb'))
 
-        system_original_text = File.read("#{other_path}/system.txt").split("\n")
-        system_translated_text = File.read("#{other_path}/system_trans.txt").split("\n")
+        system_original_text = File.read("#{other_path}/system.txt")
+                                   .split("\n")
+                                   .freeze
+        system_translated_text = File.read("#{other_path}/system_trans.txt")
+                                     .split("\n")
 
         if $shuffle > 0
             system_translated_text.shuffle!
@@ -722,30 +723,28 @@ module RGSS
             end
         end
 
-        system_translation_map = Hash[system_original_text.zip(system_translated_text)]
+        system_translation_map = Hash[system_original_text.zip(system_translated_text)].freeze
 
-        symbols = %i[@elements @skill_types @weapon_types @armor_types]
-        elements = object.instance_variable_get(:@elements)
-        skill_types = object.instance_variable_get(:@skill_types)
-        weapon_types = object.instance_variable_get(:@weapon_types)
-        armor_types = object.instance_variable_get(:@armor_types)
-        currency_unit = object.instance_variable_get(:@currency_unit)
-        terms = object.instance_variable_get(:@terms) || object.instance_variable_get(:@words)
-        game_title = object.instance_variable_get(:@game_title)
+        symbols = %i[@elements @skill_types @weapon_types @armor_types @currency_unit @terms @words @game_title].freeze
+
+        elements = object.instance_variable_get(symbols[0])
+        skill_types = object.instance_variable_get(symbols[1])
+        weapon_types = object.instance_variable_get(symbols[2])
+        armor_types = object.instance_variable_get(symbols[3])
+        currency_unit = object.instance_variable_get(symbols[4])
+        terms = object.instance_variable_get(symbols[5]) || object.instance_variable_get(symbols[6])
+        game_title = object.instance_variable_get(symbols[7])
 
         [elements, skill_types, weapon_types, armor_types].each_with_index.each do |array, i|
-            next if array.nil?
+            next unless array.is_a?(Array)
 
-            array.each_with_index do |string, j|
-                translated = system_translation_map[string]
-                array[j] = translated unless translated.nil?
-            end
-
+            array.map! { |string| system_translation_map[string] || string }
             object.instance_variable_set(symbols[i], array)
         end
 
-        instance_variable_set(:@currency_unit, system_translation_map[currency_unit]) if !currency_unit.nil? &&
-            system_translation_map.key?(currency_unit)
+        currency_unit_translated = system_translation_map[currency_unit]
+        object.instance_variable_set(symbols[4], currency_unit_translated) if currency_unit.is_a?(String) &&
+            !currency_unit_translated.nil?
 
         terms.instance_variables.each do |variable|
             value = terms.instance_variable_get(variable)
@@ -754,21 +753,18 @@ module RGSS
                 translated = system_translation_map[value]
                 value = translated unless translated.nil?
             elsif value.is_a?(Array)
-                value.each_with_index do |string, i|
-                    translated = system_translation_map[string]
-                    value[i] = translated unless translated.nil?
-                end
+                value.map! { |string| system_translation_map[string] || string }
             end
 
             terms.instance_variable_set(variable, value)
         end
 
-        object.instance_variable_defined?(:@terms) ? object.instance_variable_set(:@terms, terms) : object
-                                                                                                        .instance_variable_set(:@words, terms)
+        object.instance_variable_defined?(symbols[5]) ?
+            object.instance_variable_set(symbols[5], terms) :
+            object.instance_variable_set(symbols[6], terms)
 
-        object.instance_variable_set(:@game_title, system_translation_map[game_title]) if !currency_unit.nil? &&
-            system_translation_map
-                .key?(game_title)
+        game_title_translated = system_translation_map[game_title]
+        object.instance_variable_set(symbols[7], game_title_translated) if currency_unit.is_a?(String) && !game_title_translated.nil?
 
         puts "Written #{basename}" if $logging
 
@@ -777,22 +773,25 @@ module RGSS
 
     def self.write_scripts(scripts_file, other_path, output_path)
         script_entries = Marshal.load(File.read(scripts_file, mode: 'rb'))
-        original_strings = File.read("#{other_path}/scripts.txt", mode: 'rb')
-                               .force_encoding('UTF-8')
-                               .split("\n")
-                               .map { |line| line.gsub('\#', "\r\n") }
 
-        translation_strings = File.read("#{other_path}/scripts_trans.txt", mode: 'rb')
-                                  .force_encoding('UTF-8')
-                                  .split("\n")
-                                  .map { |line| line.gsub('\#', "\r\n") }
+        scripts_original_text = File.read("#{other_path}/scripts.txt", mode: 'rb')
+                                    .force_encoding('UTF-8')
+                                    .split("\n")
+                                    .map { |line| line.gsub('\#', "\r\n") }
+                                    .freeze
+
+        scripts_translated_text = File.read("#{other_path}/scripts_trans.txt", mode: 'rb')
+                                      .force_encoding('UTF-8')
+                                      .split("\n")
+                                      .map { |line| line.gsub('\#', "\r\n") }
+                                      .freeze
 
         # Shuffle can possibly break the game in scripts, so no shuffling
 
         script_entries.each do |script|
             code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
 
-            original_strings.zip(translation_strings).each do |original, translated|
+            scripts_original_text.zip(scripts_translated_text).each do |original, translated|
                 code.gsub!(original, translated) unless translated.nil?
             end
 
@@ -805,9 +804,7 @@ module RGSS
     def self.serialize(engine, action, directory, original_directory)
         start_time = Time.now
 
-        setup_classes(engine)
-
-        absolute_path = File.realpath(directory)
+        absolute_path = File.realpath(directory).freeze
 
         paths = {
             original_path: File.join(absolute_path, original_directory),
@@ -819,21 +816,19 @@ module RGSS
 
         paths.each_value { |path| FileUtils.mkdir_p(path) }
 
-        extensions = { ace: '.rvdata2', vx: '.rvdata', xp: '.rxdata' }
+        extensions = { ace: '.rvdata2', vx: '.rvdata', xp: '.rxdata' }.freeze
 
-        files = (
-            Dir
-                .children(paths[:original_path])
-                .select { |filename| File.extname(filename) == extensions[engine] }
-                .map { |filename| "#{paths[:original_path]}/#{filename}" }
-        )
+        files = Dir.children(paths[:original_path])
+                   .select { |filename| File.extname(filename) == extensions[engine] }
+                   .map { |filename| "#{paths[:original_path]}/#{filename}" }
+                   .freeze
 
         maps_files = []
         other_files = []
-        system_file = "#{paths[:original_path]}/System#{extensions[engine]}"
-        scripts_file = "#{paths[:original_path]}/Scripts#{extensions[engine]}"
+        system_file = "#{paths[:original_path]}/System#{extensions[engine]}".freeze
+        scripts_file = "#{paths[:original_path]}/Scripts#{extensions[engine]}".freeze
 
-        $game_type = get_game_type(system_file)
+        $game_type = get_game_type(system_file).freeze
 
         files.each do |file|
             basename = File.basename(file)
@@ -846,17 +841,17 @@ module RGSS
         end
 
         if action == 'read'
-            read_map(maps_files, paths[:maps_path]) if $no[0]
-            read_other(other_files, paths[:other_path]) if $no[1]
-            read_system(system_file, paths[:other_path]) if $no[2]
-            read_scripts(scripts_file, paths[:other_path]) if $no[3]
+            read_map(maps_files, paths[:maps_path]) unless $no[0]
+            read_other(other_files, paths[:other_path]) unless $no[1]
+            read_system(system_file, paths[:other_path]) unless $no[2]
+            read_scripts(scripts_file, paths[:other_path]) unless $no[3]
         else
-            write_map(maps_files, paths[:maps_path], paths[:output_path]) if $no[0]
-            write_other(other_files, paths[:other_path], paths[:output_path]) if $no[1]
-            write_system(system_file, paths[:other_path], paths[:output_path]) if $no[2]
-            write_scripts(scripts_file, paths[:other_path], paths[:output_path]) if $no[3]
+            write_map(maps_files, paths[:maps_path], paths[:output_path]) unless $no[0]
+            write_other(other_files, paths[:other_path], paths[:output_path]) unless $no[1]
+            write_system(system_file, paths[:other_path], paths[:output_path]) unless $no[2]
+            write_scripts(scripts_file, paths[:other_path], paths[:output_path]) unless $no[3]
         end
 
-        puts "Done in #{(Time.now - start_time)}"
+        puts "Done in #{Time.now - start_time}"
     end
 end

@@ -1,13 +1,17 @@
 module RGSS
+    def self.extract_quoted_strings: (String) -> Array[String]
+
     def self.get_game_type: (String) -> (String | nil)
 
     def self.get_translated: (Integer, String, Hash[String, String]) -> (String | nil)
 
-    def self.get_variable_translated: (String) -> (String | nil)
+    def self.get_variable_translated: (String, Hash[String, String]) -> (String | nil)
 
     def self.merge_map: (Object) -> Object
 
     def self.merge_other: (Array[Object]) -> Array[Object]
+
+    def self.merge_seq: (Array[Object]) -> Array[Object]
 
     def self.parse_parameter: (Integer, String) -> (String | nil)
 
@@ -22,6 +26,8 @@ module RGSS
     def self.read_scripts: (String, String) -> void
 
     def self.serialize: (Symbol, String, String, String) -> void
+
+    def self.shuffle_words: (Array[String]) -> Array[String]
 
     def self.write_map: (Array[String], String, String) -> void
 

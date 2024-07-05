@@ -1,0 +1,4 @@
+$logging: bool
+$shuffle: Integer
+$no: Array[bool]
+$game_type: String | nil

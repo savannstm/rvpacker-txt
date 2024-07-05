@@ -2,3 +2,4 @@ source 'https://rubygems.org'
 
 # Specify your gem's dependencies in rvpacker-txt.gemspec
 gemspec
+gem 'rubocop', group: 'development', require: false

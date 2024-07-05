@@ -78,48 +78,10 @@ class Rect
     end
 end
 
+module RPG
+end
+
 module RGSS
-    def self.remove_defined_method(scope, name)
-        if scope.instance_methods(false).include?(name)
-            scope.send(:remove_method, name)
-        end
-    end
-
-    def self.reset_method(scope, name, method)
-        remove_defined_method(scope, name)
-        scope.send(:define_method, name, method)
-    end
-
-    def self.reset_const(scope, symbol, value)
-        scope.send(:remove_const, symbol) if scope.const_defined?(symbol)
-        scope.send(:const_set, symbol, value)
-    end
-
-    def self.array_to_hash(array, &block)
-        hash = {}
-
-        array.each_with_index do |value, index|
-            r = block_given? ? block.call(value) : value
-            hash[index] = r unless r.nil?
-        end
-
-        unless array.empty?
-            last = array.length - 1
-            hash[last] = nil unless hash.has_key?(last)
-        end
-
-        hash
-    end
-
-    def self.hash_to_array(hash)
-        array = []
-        hash.each { |key, value| array[key] = value }
-        array
-    end
-
-    require 'RGSS/BasicCoder'
-    require 'RPG'
-
     # creates an empty class in a potentially nested scope
     def self.process(root, name, *args)
         if !args.empty?
@@ -156,6 +118,7 @@ module RGSS
         %i[RPG Event Page],
         %i[RPG Event Page Condition],
         %i[RPG Event Page Graphic],
+        %i[RPG EventCommand],
         %i[RPG Item],
         %i[RPG Map],
         %i[RPG Map Encounter],
@@ -166,6 +129,7 @@ module RGSS
         %i[RPG SE],
         %i[RPG Skill],
         %i[RPG State],
+        %i[RPG System],
         %i[RPG System Terms],
         %i[RPG System TestBattler],
         %i[RPG System Vehicle],
@@ -178,103 +142,8 @@ module RGSS
         %i[RPG UsableItem],
         %i[RPG UsableItem Damage],
         %i[RPG UsableItem Effect],
-        %i[RPG Weapon],
-        # Script classes serialized in save game files
-        [:Game_ActionResult],
-        [:Game_Actor],
-        [:Game_Actors],
-        [:Game_BaseItem],
-        [:Game_BattleAction],
-        [:Game_CommonEvent],
-        [:Game_Enemy],
-        [:Game_Event],
-        [:Game_Follower],
-        [:Game_Followers],
-        [:Game_Interpreter],
-        [:Game_Map],
-        [:Game_Message],
-        [:Game_Party],
-        [:Game_Picture],
-        [:Game_Pictures],
-        [:Game_Player],
-        [:Game_System],
-        [:Game_Timer],
-        [:Game_Troop],
-        [:Game_Screen],
-        [:Game_Vehicle],
-        [:Interpreter]
+        %i[RPG Weapon]
     ].each { |symbol_array| process(Object, *symbol_array) }
-
-    def self.setup_classes(version)
-        # change version_id to fixed number
-        reset_method(
-            RPG::System,
-            :reduce_string,
-            ->(string) do
-                return nil if string.nil?
-
-                stripped = string.strip
-                stripped.empty? ? nil : stripped
-            end
-        )
-
-        # These magic numbers should be different. If they are the same, the saved version
-        # of the map in save files will be used instead of any updated version of the map
-        reset_method(
-            RPG::System,
-            :map_version,
-            ->(_ignored) { 12_345_678 }
-        )
-
-        reset_method(
-            Game_System,
-            :map_version,
-            ->(_ignored) { 87_654_321 }
-        )
-
-        # Game_Interpreter is marshalled differently in VX Ace
-        if version == :ace
-            reset_method(Game_Interpreter, :marshal_dump, -> { @data })
-            reset_method(
-                Game_Interpreter,
-                :marshal_load,
-                ->(obj) { @data = obj }
-            )
-        else
-            remove_defined_method(Game_Interpreter, :marshal_dump)
-            remove_defined_method(Game_Interpreter, :marshal_load)
-        end
-
-        reset_method(
-            RPG::EventCommand,
-            :clean,
-            -> { @parameters[0].rstrip! if @code == 401 }
-        )
-
-        reset_const(
-            RPG::EventCommand,
-            :MOVE_LIST_CODE,
-            version == :xp ? 209 : 205
-        )
-
-        BasicCoder.ivars_methods_set(version)
-    end
-
-    class Game_Switches
-        include RGSS::BasicCoder
-    end
-
-    class Game_Variables
-        include RGSS::BasicCoder
-    end
-
-    class Game_SelfSwitches
-        include RGSS::BasicCoder
-    end
-
-    class Game_System
-        include RGSS::BasicCoder
-    end
-
-    require 'RGSS/serialize'
 end
+
+require 'serialize'
