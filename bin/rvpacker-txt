@@ -5,6 +5,7 @@ require 'optparse'
 $logging = false
 $shuffle = 0
 $no = [false, false, false, false] # 0 is whether to NOT process maps, 1 is other, 2 is system, 3 is scripts
+$disable_custom_parsing = false
 
 options = {}
 OptionParser.new do |command|
@@ -43,6 +44,9 @@ OptionParser.new do |command|
                '--shuffle NUMBER',
                'At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.') { |number| $shuffle = number }
 
+    command.on('--disable-custom-parsing',
+               'Disables built-in custom parsing for some games, which may improperly parse/write some games.')
+
     command.on('-l',
                '--log',
                'Log information while processing.') { $logging = true }
@@ -53,7 +57,7 @@ OptionParser.new do |command|
 end.parse!(ARGV)
 
 if ARGV.empty?
-    puts 'COMMAND argument is required.'
+    puts 'COMMAND argument is required. Use rvpacker-txt -h for help.'
     exit
 end
 
@@ -66,6 +70,7 @@ end
 
 directory = options[:input_dir]
 raise "#{directory} not found" unless File.exist?(directory)
+directory = File.realpath(directory)
 
 original_directory = Dir.foreach(directory).find { |dirname| dirname.downcase == 'original' || dirname.downcase == 'data' }
 raise '"Data" or "original" directory not found within input directory.' if original_directory.nil?

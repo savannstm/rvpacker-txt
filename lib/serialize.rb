@@ -18,41 +18,40 @@
 
 require 'zlib'
 
+# Fuck using an array with set, that's just straight dumb and not efficient
 class IndexedSet
     def initialize
-        @set = Set.new
-        @index = []
+        @hash = Hash.new
     end
 
     def add(item)
-        return if @set.include?(item)
-
-        @set.add(item)
-        @index << item
+        return if @hash.include?(item)
+        @hash[item] = hash.size
+        @hash
     end
 
     def include?(item)
-        @set.include?(item)
+        @hash.include?(item)
     end
 
     def each(&block)
-        @index.each(&block)
+        @hash.each_key(&block)
     end
 
     def to_a
-        @index.dup
+        @hash.dup
     end
 
     def join(delimiter = '')
-        @index.join(delimiter)
+        @hash.keys.join(delimiter)
     end
 
     def length
-        @index.length
+        @hash.size
     end
 
     def empty?
-        @index.empty?
+        @hash.empty?
     end
 end
 
@@ -61,7 +60,7 @@ module RGSS
         object = Marshal.load(File.read(system_file_path, mode: 'rb'))
         game_title = object.instance_variable_get(:@game_title)
 
-        return nil if !game_title.is_a?(String) || game_title.empty?
+        return nil if $disable_custom_parsing || (!game_title.is_a?(String) || game_title.empty?)
 
         game_title.downcase!
 
@@ -99,7 +98,7 @@ module RGSS
 
             case $game_type
                 when 'lisa'
-                    unless variable.split('\#').all? { |line| line.match?(/^<.*>\.?$/) || line.length.nil? }
+                    unless variable.split('\#').all? { |line| line.match?(/^<.*>\.?$/) || line.empty? }
                         return nil
                     end
                 else
@@ -277,10 +276,10 @@ module RGSS
 
         [elements, skill_types, weapon_types, armor_types].each do |array|
             next if array.nil?
-            array.each { |string| lines.add(string) unless string.is_a?(String) && string.empty? }
+            array.each { |string| lines.add(string) if string.is_a?(String) && !string.empty? }
         end
 
-        lines.add(currency_unit) unless currency_unit.is_a?(String) && currency_unit.empty?
+        lines.add(currency_unit) if currency_unit.is_a?(String) && !currency_unit.empty?
 
         terms.instance_variables.each do |variable|
             value = terms.instance_variable_get(variable)
@@ -290,10 +289,10 @@ module RGSS
                 next
             end
 
-            value.each { |string| lines.add(string) unless string.is_a?(String) && string.empty? }
+            value.each { |string| lines.add(string) if string.is_a?(String) && !string.empty? }
         end
 
-        lines.add(game_title) unless game_title.is_a?(String) && game_title.empty?
+        lines.add(game_title) if game_title.is_a?(String) && !game_title.empty?
 
         puts "Parsed #{filename}" if $logging
 
@@ -306,10 +305,10 @@ module RGSS
         array.map do |string|
             re = /\S+/
             words = string.scan(re)
-            words.shuffle
+            shuffled = words.shuffle
 
             (0..(words.length)).each do |i|
-                string.sub!(string[i], words[i])
+                string.sub!(words[i], shuffled[i])
             end
 
             string
@@ -370,7 +369,7 @@ module RGSS
             extract_quoted_strings(code).each do |string|
                 string.strip!
 
-                next if string.empty? || string.delete('　　').empty?
+                next if string.empty? || string.gsub('　', '').empty?
 
                 # Maybe this mess will remove something that mustn't be removed, but it needs to be tested
                 next if string.start_with?(/([#!?$@]|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
@@ -395,7 +394,25 @@ module RGSS
                     string.match?(/\+?=?=/) ||
                     string.match?(/[}{_<>]/) ||
                     string.match?(/r[vx]data/) ||
-                    string.match?(/No such file or directory|level \*\*|Courier New|Comic Sans|Lucida|Verdana|Tahoma|Arial|Player start location|Common event call has exceeded|se-|Start Pos|An error has occurred|Define it first|Process Skill|Wpn Only|Don't Wait|Clear image|Can Collapse/)
+                    string.match?(/No such file or directory/) ||
+                    string.match?(/level \*\*/) ||
+                    string.match?(/Courier New/) ||
+                    string.match?(/Comic Sans/) ||
+                    string.match?(/Lucida/) ||
+                    string.match?(/Verdana/) ||
+                    string.match?(/Tahoma/) ||
+                    string.match?(/Arial/) ||
+                    string.match?(/Player start location/) ||
+                    string.match?(/Common event call has exceeded/) ||
+                    string.match?(/se-/) ||
+                    string.match?(/Start Pos/) ||
+                    string.match?(/An error has occurred/) ||
+                    string.match?(/Define it first/) ||
+                    string.match?(/Process Skill/) ||
+                    string.match?(/Wpn Only/) ||
+                    string.match?(/Don't Wait/) ||
+                    string.match?(/Clear image/) ||
+                    string.match?(/Can Collapse/)
 
                 strings.add(string)
             end
@@ -792,6 +809,8 @@ module RGSS
             code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
 
             scripts_original_text.zip(scripts_translated_text).each do |original, translated|
+                # That may possibly break something, but until it does, who cares
+                # Honestly, it needs to be changed to find quoted strings like in `extract_quoted_strings` method
                 code.gsub!(original, translated) unless translated.nil?
             end
 
@@ -804,14 +823,12 @@ module RGSS
     def self.serialize(engine, action, directory, original_directory)
         start_time = Time.now
 
-        absolute_path = File.realpath(directory).freeze
-
         paths = {
-            original_path: File.join(absolute_path, original_directory),
-            translation_path: File.join(absolute_path, 'translation'),
-            maps_path: File.join(absolute_path, 'translation/maps'),
-            other_path: File.join(absolute_path, 'translation/other'),
-            output_path: File.join(absolute_path, 'output')
+            original_path: File.join(directory, original_directory),
+            translation_path: File.join(directory, 'translation'),
+            maps_path: File.join(directory, 'translation/maps'),
+            other_path: File.join(directory, 'translation/other'),
+            output_path: File.join(directory, 'output')
         }
 
         paths.each_value { |path| FileUtils.mkdir_p(path) }

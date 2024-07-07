@@ -84,17 +84,14 @@ end
 module RGSS
     # creates an empty class in a potentially nested scope
     def self.process(root, name, *args)
-        if !args.empty?
-            process(root.const_get(name), *args)
+        if args.empty?
+            root.const_set(name, Class.new) unless root.const_defined?(name, false)
         else
-            unless root.const_defined?(name, false)
-                root.const_set(name, Class.new)
-            end
+            process(root.const_get(name), *args)
         end
     end
 
-    # other classes that don't need definitions
-    [
+    classes_nested_array = [
         # RGSS data structures
         %i[RPG Actor],
         %i[RPG Animation],
@@ -143,7 +140,11 @@ module RGSS
         %i[RPG UsableItem Damage],
         %i[RPG UsableItem Effect],
         %i[RPG Weapon]
-    ].each { |symbol_array| process(Object, *symbol_array) }
+    ].freeze
+
+    classes_nested_array.each do |symbol_array|
+        process(Object, *symbol_array)
+    end
 end
 
 require 'serialize'
