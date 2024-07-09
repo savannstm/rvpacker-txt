@@ -1,5 +1,0 @@
-$logging: bool
-$shuffle: Integer
-$no: Array[bool]
-$game_type: String | nil
-$disable_custom_parsing: bool

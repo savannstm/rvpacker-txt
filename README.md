@@ -5,9 +5,9 @@ port of Ruby 1.9.x's rvpacker to Ruby 3.x to use .txt files instead of YAML, and
 
 rvpacker consists of 3 parts:
 
-* RPG library (stub classes for serialization of RPGMaker game data)
-* RGSS library (some more classes for RPGMaker serialization)
-* rvpacker-txt (the script you call on the frontend)
+* classes.rb library - all necessary classes to properly load and dump RPG Maker files
+* read.rb library - all necessary functions for reading and parsing RPG Maker files to text
+* write.rb library - all necessary functions for writing parsed RPG Maker files back to their initial form.
 
 # Installation
 
@@ -15,8 +15,9 @@ rvpacker consists of 3 parts:
 $ gem install rvpacker-txt
 ```
 
-Usage
-=====
+# Usage
+
+You can get a help message on usage using `rvpacker-txt -h`.
 
 ```
 $ rvpacker-txt -h
@@ -28,15 +29,12 @@ COMMANDS:
     read - Parses RPG Maker game files to .txt
     write - Writes parsed files back to their initial form
 OPTIONS:
-    -d, --input-dir DIRECTORY        Input directory of RPG Maker project.
-                                     Must contain "Data" or "original" folder to read,
-                                     and additionally "translation" with "maps" and  "other" subdirectories to write.
-        --no                         Don't process specified files.
-                                     Takes multiple values separated by a comma.
-                                     Allowed values: maps, other, system, plugins
-    -s, --shuffle NUMBER             At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.
-    -l, --log                        Log information while processing.
-    -h, --help                       Show help message.
+    -d, --input-dir DIR              Input directory of RPG Maker project
+        --disable-processing FILES   Don't process specified files (maps, other, system, plugins)
+    -s, --shuffle NUM                Shuffle level (1: lines, 2: lines and words)
+        --disable-custom-parsing     Disables built-in custom parsing for some games
+    -l, --log                        Log information while processing
+    -h, --help                       Show help message
 ```
 
 For example, to read a RPG Maker VX Ace project in E:/Documents/RPGMakerGame to .txt files:
@@ -49,7 +47,8 @@ Program determines game engine automatically.
 
 This will parse all text from Data/* files into translation/maps and translation/other directories as files without
 _trans postfix that contain original text and files with _trans postfix that contain empty lines for translation.
-Lines from Scripts file will be parsed into translation/other/scripts.txt file as plain text.
+Lines from Scripts file will be parsed into translation/other/scripts.txt file as plain text, and
+also into a scripts_plain.txt file that contains scripts contents as a whole - that's just for convenience.
 
 To write previously parsed project back to its initial form:
 

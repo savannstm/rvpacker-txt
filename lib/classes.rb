@@ -22,9 +22,7 @@ class Table
     def initialize(bytes)
         @dim, @x, @y, @z, items, *@data = bytes.unpack('L5 S*')
 
-        unless items == @data.length && @x * @y * @z == items
-            raise 'Size mismatch loading Table from data'
-        end
+        raise 'Size mismatch loading Table from data' unless items == @data.length && @x * @y * @z == items
     end
 
     def _dump(*_ignored)
@@ -32,7 +30,7 @@ class Table
     end
 
     def self._load(bytes)
-        Table.new(bytes)
+        new(bytes)
     end
 end
 
@@ -46,7 +44,7 @@ class Color
     end
 
     def self._load(bytes)
-        Color.new(bytes)
+        new(bytes)
     end
 end
 
@@ -60,7 +58,7 @@ class Tone
     end
 
     def self._load(bytes)
-        Tone.new(bytes)
+        new(bytes)
     end
 end
 
@@ -74,7 +72,44 @@ class Rect
     end
 
     def self._load(bytes)
-        Rect.new(bytes)
+        new(bytes)
+    end
+end
+
+# Fuck using an array with set, that's just straight dumb and not efficient
+class IndexedSet
+    def initialize
+        @hash = Hash.new
+    end
+
+    def add(item)
+        return if @hash.include?(item)
+        @hash[item] = hash.size
+        @hash
+    end
+
+    def include?(item)
+        @hash.include?(item)
+    end
+
+    def each(&block)
+        @hash.each_key(&block)
+    end
+
+    def to_a
+        @hash.dup
+    end
+
+    def join(delimiter = '')
+        @hash.keys.join(delimiter)
+    end
+
+    def length
+        @hash.size
+    end
+
+    def empty?
+        @hash.empty?
     end
 end
 
@@ -146,5 +181,3 @@ module RGSS
         process(Object, *symbol_array)
     end
 end
-
-require 'serialize'

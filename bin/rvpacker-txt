@@ -1,88 +1,130 @@
 #!/usr/bin/env ruby
-require 'classes'
+# frozen_string_literal: true
+
 require 'optparse'
+require 'fileutils'
 
-$logging = false
-$shuffle = 0
-$no = [false, false, false, false] # 0 is whether to NOT process maps, 1 is other, 2 is system, 3 is scripts
-$disable_custom_parsing = false
+require 'classes'
+require 'read'
+require 'write'
 
-options = {}
-OptionParser.new do |command|
-    command.banner = "This tool allows to parse RPG Maker project to .txt files and back.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - Parses RPG Maker game files to .txt\n    write - Writes parsed files back to their initial form\nOPTIONS:\n"
+def self.parse_options
+    options = { disable_processing: Array.new(4, false) }
 
-    command.on('-d',
-               '--input-dir DIRECTORY',
-               'Input directory of RPG Maker project.',
-               'Must contain "Data" or "original" folder to read,',
-               'and additionally "translation" with "maps" and  "other" subdirectories to write.') { |dir| options[:input_dir] = dir }
+    OptionParser.new do |cmd|
+        cmd.banner = "This tool allows to parse RPG Maker project to .txt files and back.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - Parses RPG Maker game files to .txt\n    write - Writes parsed files back to their initial form\nOPTIONS:\n"
 
-    command.on('--no',
-               "Don't process specified files.",
-               'Takes multiple values separated by a comma.',
-               'Allowed values: maps, other, system, plugins') do |files|
-        actual_files = files.split(',')
+        cmd.on('-i', '--input-dir DIR', String, 'Input directory of RPG Maker project') do |dir|
+            options[:input_dir] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
+            options[:output_dir] = options[:input_dir]
+        end
 
-        actual_files.each do |file|
-            case file
-                when "maps"
-                    $no[0] = true
-                when "other"
-                    $no[1] = true
-                when "system"
-                    $no[2] = true
-                when "scripts"
-                    $no[3] = true
-                else
-                    puts "Wrong value for no argument: #{file}.\nAllowed values: maps, other, system, plugins"
-                    exit
+        cmd.on('-o', '--output-dir DIR', String, 'Output directory of parsed/written files') do |dir|
+            options[:output_dir] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
+        end
+
+        cmd.on('--disable-processing FILES', Array, 'Don\'t process specified files (maps, other, system, plugins)') do |files|
+            files.each do |file|
+                index = %w[maps other system scripts].index(file)
+                options[:disable_processing][index] = true if index
             end
         end
+
+        cmd.on('-s', '--shuffle NUM', Integer, 'Shuffle level (1: lines, 2: lines and words)') do |num|
+            options[:shuffle_level] = num
+        end
+
+        cmd.on('--disable-custom-parsing', 'Disables built-in custom parsing for some games') do
+            options[:disable_custom_parsing] = true
+        end
+
+        cmd.on('-l', '--log', 'Log information while processing') do
+            options[:logging] = true
+        end
+
+        cmd.on('-h', '--help', 'Show help message') do
+            puts cmd
+            exit
+        end
+    end.parse!
+
+    options[:action] = ARGV.shift
+    raise 'COMMAND argument is required. Use rvpacker-txt -h for help.' if options[:action].nil?
+    raise 'Invalid command. Allowed commands are: read, write.' unless %w[read write].include?(options[:action])
+
+    options
+end
+
+def self.get_game_type(system_file_path, disable_custom_parsing)
+    return nil if disable_custom_parsing
+
+    object = Marshal.load(File.binread(system_file_path))
+    game_title = object.instance_variable_get(:@game_title).to_s.downcase
+    game_title.include?('lisa') ? 'lisa' : nil
+end
+
+start_time = Time.now
+
+options = parse_options
+input_dir = options[:input_dir]
+output_dir = options[:output_dir]
+disable_custom_parsing = options[:disable_custom_parsing]
+shuffle_level = options[:shuffle_level]
+logging = options[:logging]
+disable_processing = options[:disable_processing]
+
+extensions = { xp: '.rxdata', vx: 'rvdata', ace: 'rvdata2' }
+
+original_directory = Dir.glob(File.join(input_dir, '{data,original}'), File::FNM_CASEFOLD).first
+raise '"Data" or "original" directory not found within input directory.' unless original_directory
+
+paths = {
+    original_path: original_directory,
+    translation_path: File.join(input_dir, 'translation'),
+    maps_path: File.join(input_dir, 'translation', 'maps'),
+    other_path: File.join(input_dir, 'translation', 'other'),
+    output_path: File.join(output_dir, 'output')
+}
+
+paths.each_value { |path| FileUtils.mkdir_p(path) }
+
+engine = extensions.find do |symbol, extension|
+    symbol if File.exist?(File.join(paths[:original_path], "System.#{extension}"))
+end || (raise "Couldn't determine project engine.")
+
+files = Dir.glob("#{paths[:original_path]}/*#{extensions[engine]}")
+
+maps_files = []
+other_files = []
+system_file = nil
+scripts_file = nil
+
+files.each do |file|
+    basename = File.basename(file)
+
+    if basename.start_with?(/Map[0-9]/)
+        maps_files.push(file)
+    elsif !basename.start_with?(/Map|Tilesets|Animations|System|Scripts|Areas/)
+        other_files.push(file)
+    elsif basename.start_with?('System')
+        system_file = file
+    elsif basename.start_with?('Scripts')
+        scripts_file = file
     end
-
-    command.on('-s',
-               '--shuffle NUMBER',
-               'At value 1: Shuffles all lines in strings, at value 2: shuffles all lines and words in strings.') { |number| $shuffle = number }
-
-    command.on('--disable-custom-parsing',
-               'Disables built-in custom parsing for some games, which may improperly parse/write some games.')
-
-    command.on('-l',
-               '--log',
-               'Log information while processing.') { $logging = true }
-
-    command.on_tail('-h',
-                    '--help',
-                    'Show help message.') { puts command; exit }
-end.parse!(ARGV)
-
-if ARGV.empty?
-    puts 'COMMAND argument is required. Use rvpacker-txt -h for help.'
-    exit
 end
 
-options[:action] = ARGV.shift
+game_type = get_game_type(system_file, disable_custom_parsing)
 
-unless %w[read write].include?(options[:action])
-    puts 'Invalid command. Allowed commands are: read, write.'
-    exit
+if options[:action] == 'read'
+    read_map(maps_files, paths[:maps_path], logging, game_type) unless disable_processing[0]
+    read_other(other_files, paths[:other_path], logging, game_type) unless disable_processing[1]
+    read_system(system_file, paths[:other_path], logging) unless disable_processing[2]
+    read_scripts(scripts_file, paths[:other_path], logging) unless disable_processing[3]
+else
+    write_map(maps_files, paths[:maps_path], paths[:output_path], shuffle_level, logging, game_type) unless disable_processing[0]
+    write_other(other_files, paths[:other_path], paths[:output_path], shuffle_level, logging, game_type) unless disable_processing[1]
+    write_system(system_file, paths[:other_path], paths[:output_path], shuffle_level, logging) unless disable_processing[2]
+    write_scripts(scripts_file, paths[:other_path], paths[:output_path], logging) unless disable_processing[3]
 end
 
-directory = options[:input_dir]
-raise "#{directory} not found" unless File.exist?(directory)
-directory = File.realpath(directory)
-
-original_directory = Dir.foreach(directory).find { |dirname| dirname.downcase == 'original' || dirname.downcase == 'data' }
-raise '"Data" or "original" directory not found within input directory.' if original_directory.nil?
-
-engine = if File.exist?(File.join(directory, original_directory, 'System.rxdata'))
-             :xp
-         elsif File.exist?(File.join(directory, original_directory, 'System.rvdata'))
-             :vx
-         elsif File.exist?(File.join(directory, original_directory, 'System.rvdata2'))
-             :ace
-         else
-             raise "Couldn't determine project engine."
-         end
-
-RGSS.serialize(engine, options[:action], directory, original_directory,)
+puts "Done in #{Time.now - start_time}"
