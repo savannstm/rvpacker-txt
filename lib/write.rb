@@ -2,17 +2,58 @@
 
 require 'zlib'
 
-def self.shuffle_words(array)
-    array.map do |string|
-        re = /\S+/
-        words = string.scan(re)
-        shuffled = words.shuffle
+def self.extract_quoted_strings(string)
+    # Hash of string-index key-value pairs
+    result = {}
 
-        (0..(words.length)).each do |i|
-            string.sub!(words[i], shuffled[i])
+    skip_block = false
+    in_quotes = false
+    quote_type = nil
+    buffer = []
+
+    current_string_index = 0
+    string.each_line do |line|
+        stripped = line.strip
+
+        if stripped[0] == '#' || stripped.start_with?(/(Win|Lose)|_Fanfare/)
+            next
         end
 
-        string
+        skip_block = true if stripped.start_with?('=begin')
+        skip_block = false if stripped.start_with?('=end')
+
+        next if skip_block
+
+        buffer.push('\#') if in_quotes
+
+        line.each_char.each_with_index do |char, index|
+            if %w[' "].include?(char)
+                unless quote_type.nil? || char == quote_type
+                    buffer.push(char)
+                    next
+                end
+
+                quote_type = char
+                in_quotes = !in_quotes
+                result[buffer.join] = current_string_index + index
+                buffer.clear
+                next
+            end
+
+            if in_quotes
+                buffer.push(char)
+            end
+        end
+
+        current_string_index += line.length
+    end
+
+    result
+end
+
+def shuffle_words_in_array(array)
+    array.map do |string|
+        string.split.shuffle.join(' ')
     end
 end
 
@@ -309,7 +350,17 @@ def self.write_other(original_files, other_path, output_path, shuffle_level, log
     end
 end
 
-def self.write_system(system_file_path, other_path, output_path, shuffle_level, logging)
+def self.write_system(system_file_path, ini_file_path, other_path, output_path, shuffle_level, logging)
+    def self.write_ini_title(ini_file_path, translated)
+        file_lines = File.readlines(ini_file_path, chomp: true)
+        title_line_index = file_lines.each_with_index do |line, i|
+            break i if line.start_with?('title')
+        end
+
+        file_lines[title_line_index] = translated
+        File.binwrite(ini_file_path, file_lines.join)
+    end
+
     system_basename = File.basename(system_file_path)
     system_object = Marshal.load(File.binread(system_file_path))
 
@@ -333,7 +384,6 @@ def self.write_system(system_file_path, other_path, output_path, shuffle_level, 
     armor_types = system_object.instance_variable_get(system_symbols[3])
     currency_unit = system_object.instance_variable_get(system_symbols[4])
     terms = system_object.instance_variable_get(system_symbols[5]) || system_object.instance_variable_get(system_symbols[6])
-    game_title = system_object.instance_variable_get(system_symbols[7])
 
     [elements, skill_types, weapon_types, armor_types].each_with_index.each do |array, i|
         next unless array.is_a?(Array)
@@ -363,20 +413,19 @@ def self.write_system(system_file_path, other_path, output_path, shuffle_level, 
         system_object.instance_variable_set(system_symbols[5], terms) :
         system_object.instance_variable_set(system_symbols[6], terms)
 
-    game_title_translated = system_translation_map[game_title]
+    game_title_translated = system_translated_text[-1]
     system_object.instance_variable_set(system_symbols[7], game_title_translated) if currency_unit.is_a?(String) && !game_title_translated.nil?
+
+    write_ini_title(ini_file_path, game_title_translated)
 
     puts "Written #{system_basename}" if logging
 
     File.binwrite("#{output_path}/#{system_basename}", Marshal.dump(system_object))
 end
 
-def self.write_scripts(scripts_file, other_path, output_path, logging)
-    scripts_basename = File.basename(scripts_file)
-    script_entries = Marshal.load(File.binread(scripts_file))
-
-    scripts_original_text = File.readlines("#{other_path}/scripts.txt", encoding: 'UTF-8', chomp: true)
-                                .map { |line| line.gsub('\#', "\r\n") }
+def self.write_scripts(scripts_file_path, other_path, output_path, logging)
+    scripts_basename = File.basename(scripts_file_path)
+    script_entries = Marshal.load(File.binread(scripts_file_path))
 
     scripts_translated_text = File.readlines("#{other_path}/scripts_trans.txt", encoding: 'UTF-8', chomp: true)
                                   .map { |line| line.gsub('\#', "\r\n") }
@@ -386,10 +435,58 @@ def self.write_scripts(scripts_file, other_path, output_path, logging)
     script_entries.each do |script|
         code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
 
-        scripts_original_text.zip(scripts_translated_text).each do |original, translated|
-            # That may possibly break something, but until it does, who cares
-            # Honestly, it needs to be changed to find quoted strings like in `extract_quoted_strings` method
-            code.gsub!(original, translated) unless translated.nil?
+        (extract_quoted_strings(code)).each_with_index do |string_data, i|
+            string, string_index = string_data
+
+            string.strip!
+
+            # Removes the U+3000 Japanese typographical space to check if string, when stripped, is truly empty
+            next if string.empty? || string.gsub('　', '').empty?
+
+            # Maybe this mess will remove something that mustn't be removed, but it needs to be tested
+            next if string.start_with?(/([#!?$@]|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
+                string.match?(/^\d+$/) ||
+                string.match?(/^(.)\1{2,}$/) ||
+                string.match?(/^(false|true)$/) ||
+                string.match?(/^[wr]b$/) ||
+                string.match?(/^(?=.*\d)[A-Za-z0-9\-]+$/) ||
+                string.match?(/^[A-Z\-()\/ +'&]*$/) ||
+                string.match?(/^[a-z\-()\/ +'&]*$/) ||
+                string.match?(/^[A-Za-z]+[+-]$/) ||
+                string.match?(/^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼|]$/) ||
+                string.match?(/^Tile.*[A-Z]$/) ||
+                string.match?(/^:?%.*[ds][:%]*?$/) ||
+                string.match?(/^[a-zA-Z]+([A-Z][a-z]*)+$/) ||
+                string.match?(/^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/) ||
+                string.match?(/\.(mp3|ogg|jpg|png|ini)$/) ||
+                string.match?(/\/(\d.*)?$/) ||
+                string.match?(/FILE$/) ||
+                string.match?(/#\{/) ||
+                string.match?(/\\(?!#)/) ||
+                string.match?(/\+?=?=/) ||
+                string.match?(/[}{_<>]/) ||
+                string.match?(/r[vx]data/) ||
+                string.match?(/No such file or directory/) ||
+                string.match?(/level \*\*/) ||
+                string.match?(/Courier New/) ||
+                string.match?(/Comic Sans/) ||
+                string.match?(/Lucida/) ||
+                string.match?(/Verdana/) ||
+                string.match?(/Tahoma/) ||
+                string.match?(/Arial/) ||
+                string.match?(/Player start location/) ||
+                string.match?(/Common event call has exceeded/) ||
+                string.match?(/se-/) ||
+                string.match?(/Start Pos/) ||
+                string.match?(/An error has occurred/) ||
+                string.match?(/Define it first/) ||
+                string.match?(/Process Skill/) ||
+                string.match?(/Wpn Only/) ||
+                string.match?(/Don't Wait/) ||
+                string.match?(/Clear image/) ||
+                string.match?(/Can Collapse/)
+
+            code[string_index, string.length] = scripts_translated_text[i]
         end
 
         script[2] = Zlib::Deflate.deflate(code, Zlib::BEST_COMPRESSION)

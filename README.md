@@ -29,11 +29,16 @@ COMMANDS:
     read - Parses RPG Maker game files to .txt
     write - Writes parsed files back to their initial form
 OPTIONS:
-    -d, --input-dir DIR              Input directory of RPG Maker project
+    -i, --input-dir DIR              Input directory of RPG Maker project
+    -o, --output-dir DIR             Output directory of parsed/written files
         --disable-processing FILES   Don't process specified files (maps, other, system, plugins)
     -s, --shuffle NUM                Shuffle level (1: lines, 2: lines and words)
-        --disable-custom-parsing     Disables built-in custom parsing for some games
+        --disable_custom_processing  Disables built-in custom parsing/writing for some games
     -l, --log                        Log information while processing
+    -f, --force                      Force rewrite all files. Cannot be used with --append.
+                                     USE WITH CAUTION!
+    -a, --append                     When you update the rvpacker-txt, you probably should re-read your files with append, as some new text might be added to parser.
+                                     Cannot be used with --force
     -h, --help                       Show help message
 ```
 

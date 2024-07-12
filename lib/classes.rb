@@ -77,7 +77,7 @@ class Rect
 end
 
 # Fuck using an array with set, that's just straight dumb and not efficient
-class IndexedSet
+class IndexSet
     def initialize
         @hash = Hash.new
     end
