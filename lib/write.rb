@@ -11,6 +11,7 @@ def self.extract_quoted_strings(string)
     quote_type = nil
     buffer = []
 
+    # I hope this calculates index correctly
     current_string_index = 0
     string.each_line do |line|
         stripped = line.strip
@@ -51,9 +52,11 @@ def self.extract_quoted_strings(string)
     result
 end
 
-def shuffle_words_in_array(array)
-    array.map do |string|
-        string.split.shuffle.join(' ')
+def shuffle_words(array)
+    array.each do |string|
+        words = string.scan(/\S+/)
+        shuffled_words = words.shuffle
+        string.gsub(/\S+/) { shuffled_words.pop || "" }
     end
 end
 
@@ -144,7 +147,7 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
     lisa_start = nil
 
     case code
-        when 401, 356, 405
+        when 401, 405
             case game_type
                 when 'lisa'
                     match = parameter.scan(/^(\\et\[[0-9]+\]|\\nbt)/)
@@ -154,7 +157,9 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
                     nil
             end
         when 102, 402
-            nil
+            # Implement some custom parsing
+        when 356
+            # Implement some custom parsing
         else
             nil
     end

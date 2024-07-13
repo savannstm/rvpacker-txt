@@ -20,6 +20,7 @@ def self.extract_quoted_strings(string)
     quote_type = nil
     buffer = []
 
+    # I hope this calculates index correctly
     current_string_index = 0
     string.each_line do |line|
         stripped = line.strip
@@ -70,7 +71,9 @@ def self.parse_parameter(code, parameter, game_type)
                 else
                     nil
             end
-        when 102, 356
+        when 102
+            # Implement some custom parsing
+        when 356
             # Implement some custom parsing
         else
             return nil
@@ -103,7 +106,7 @@ def self.read_map(maps_files, output_path, logging, game_type, processing_type)
     names_trans_output_path = File.join(output_path, 'names_trans.txt')
 
     if processing_type == 'default' && (File.exist?(maps_trans_output_path) || File.exist?(names_trans_output_path))
-        puts 'maps.txt or maps_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
+        puts 'maps_trans.txt or names_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
         return
     end
 
@@ -111,38 +114,31 @@ def self.read_map(maps_files, output_path, logging, game_type, processing_type)
         [File.basename(filename), Marshal.load(File.binread(filename))]
     end]
 
-    maps_lines = nil
+    maps_lines = IndexSet.new
+    names_lines = IndexSet.new
 
-    maps_trans_map = nil
-    names_trans_map = nil
+    maps_translation_map = nil
+    names_translation_map = nil
 
     if processing_type == 'append'
         if File.exist?(maps_trans_output_path)
-            maps_trans_map = Hash[File.readlines(maps_output_path, chomp: true).zip(File.readlines(maps_trans_output_path, chomp: true))]
-            names_trans_map = Hash[File.readlines(names_output_path, chomp: true).zip(File.readlines(names_trans_output_path, chomp: true))]
+            maps_translation_map = Hash[File.readlines(maps_output_path, chomp: true).zip(File.readlines(maps_trans_output_path, chomp: true))]
+            names_translation_map = Hash[File.readlines(names_output_path, chomp: true).zip(File.readlines(names_trans_output_path, chomp: true))]
         else
-            puts 'Files aren\'t already parsed. Continuing as if --append flag was omitted.'
+            puts "Files aren't already parsed. Continuing as if --append flag was omitted."
             processing_type = 'default'
-            maps_lines = [IndexSet.new, IndexSet.new]
         end
-    else
-        maps_lines = [IndexSet.new, IndexSet.new]
     end
-
-    hash_index = 0
-    names_hash_index = 0
 
     maps_object_map.each do |filename, object|
         display_name = object.instance_variable_get(:@display_name)
 
         if display_name.is_a?(String) && !display_name.empty?
-            if processing_type == 'append'
-                insert_at_index(names_trans_map, names_hash_index, display_name, '') unless names_trans_map.include?(display_name)
-            else
-                maps_lines[1].add(display_name)
+            if processing_type == 'append' && !names_translation_map.include?(display_name)
+                insert_at_index(names_translation_map, names_lines.length, display_name, '')
             end
 
-            names_hash_index += 1
+            names_lines.add(display_name)
         end
 
         events = object.instance_variable_get(:@events)
@@ -175,16 +171,14 @@ def self.read_map(maps_files, output_path, logging, game_type, processing_type)
                             if in_sequence
                                 joined = line.join('\#')
 
-                                if processing_type == 'append'
-                                    insert_at_index(maps_trans_map, hash_index, joined, '') unless maps_trans_map.include?(joined)
-                                else
-                                    maps_lines[0].add(joined)
+                                if processing_type == 'append' && !maps_translation_map.include?(joined)
+                                    insert_at_index(maps_translation_map, maps_lines.length, joined, '')
                                 end
+
+                                maps_lines.add(joined)
 
                                 line.clear
                                 in_sequence = false
-
-                                hash_index += 1
                             end
 
                             if code == 102 && parameter.is_a?(Array)
@@ -193,13 +187,11 @@ def self.read_map(maps_files, output_path, logging, game_type, processing_type)
                                         parsed = parse_parameter(code, subparameter, game_type)
 
                                         unless parsed.nil?
-                                            if processing_type == 'append'
-                                                insert_at_index(maps_trans_map, hash_index, parsed, '') unless maps_trans_map.include?(parsed)
-                                            else
-                                                maps_lines[0].add(parsed)
+                                            if processing_type == 'append' && !maps_translation_map.include?(parsed)
+                                                insert_at_index(maps_translation_map, maps_lines.length, parsed, '')
                                             end
 
-                                            hash_index += 1
+                                            maps_lines.add(parsed)
                                         end
                                     end
                                 end
@@ -209,13 +201,11 @@ def self.read_map(maps_files, output_path, logging, game_type, processing_type)
                                 unless parsed.nil?
                                     subbed = parsed.gsub(/\r?\n/, '\#')
 
-                                    if processing_type == 'append'
-                                        insert_at_index(maps_trans_map, hash_index, parsed, '') unless maps_trans_map.include?(parsed)
-                                    else
-                                        maps_lines[0].add(subbed)
+                                    if processing_type == 'append' && !maps_translation_map.include?(parsed)
+                                        insert_at_index(maps_translation_map, maps_lines.length, parsed, '')
                                     end
 
-                                    hash_index += 1
+                                    maps_lines.add(subbed)
                                 end
                             end
                         end
@@ -227,17 +217,25 @@ def self.read_map(maps_files, output_path, logging, game_type, processing_type)
         puts "Parsed #{filename}" if logging
     end
 
-    if processing_type == 'append'
-        File.binwrite(maps_output_path, maps_trans_map.keys.join("\n"))
-        File.binwrite(maps_trans_output_path, maps_trans_map.values.join("\n"))
-        File.binwrite(names_output_path, names_trans_map.keys.join("\n"))
-        File.binwrite(names_trans_output_path, names_trans_map.values.join("\n"))
-    else
-        File.binwrite(maps_output_path, maps_lines[0].join("\n"))
-        File.binwrite(maps_trans_output_path, "\n" * (maps_lines[0].empty? ? 0 : maps_lines[0].length - 1))
-        File.binwrite(names_output_path, maps_lines[1].join("\n"))
-        File.binwrite(names_trans_output_path, "\n" * (maps_lines[1].empty? ? 0 : maps_lines[1].length - 1))
-    end
+    maps_original_content,
+        maps_translated_content,
+        names_original_content,
+        names_translated_content = if processing_type == 'append'
+                                       [maps_translation_map.keys.join("\n"),
+                                        maps_translation_map.values.join("\n"),
+                                        names_translation_map.keys.join("\n"),
+                                        names_translation_map.values.join("\n")]
+                                   else
+                                       [maps_lines.join("\n"),
+                                        "\n" * (maps_lines.empty? ? 0 : maps_lines.length - 1),
+                                        names_lines.join("\n"),
+                                        "\n" * (names_lines.empty? ? 0 : names_lines.length - 1)]
+                                   end
+
+    File.binwrite(maps_output_path, maps_original_content)
+    File.binwrite(maps_trans_output_path, maps_translated_content)
+    File.binwrite(names_output_path, names_original_content)
+    File.binwrite(names_trans_output_path, names_translated_content)
 end
 
 def self.read_other(other_files, output_path, logging, game_type, processing_type)
@@ -262,24 +260,20 @@ def self.read_other(other_files, output_path, logging, game_type, processing_typ
             next
         end
 
-        other_lines = nil
-        other_trans_map = nil
+        other_lines = IndexSet.new
+        other_translation_map = nil
 
         if processing_type == 'append'
             if File.exist?(other_trans_output_path)
                 internal_processing_type == 'append'
-                other_trans_map = Hash[File.readlines(other_output_path, chomp: true).zip(File.readlines(other_trans_output_path, chomp: true))]
+                other_translation_map = Hash[File.readlines(other_output_path, chomp: true).zip(File.readlines(other_trans_output_path, chomp: true))]
             else
-                puts 'Files aren\'t already parsed. Continuing as if --append flag was omitted.'
+                puts "Files aren't already parsed. Continuing as if --append flag was omitted."
                 internal_processing_type = 'default'
-                other_lines = IndexSet.new
             end
-        else
-            other_lines = IndexSet.new
         end
 
         if !filename.start_with?(/Common|Troops/)
-            hash_index = 0
             other_object_array.each do |object|
                 name = object.instance_variable_get(:@name)
                 nickname = object.instance_variable_get(:@nickname)
@@ -291,19 +285,16 @@ def self.read_other(other_files, output_path, logging, game_type, processing_typ
                         parsed = parse_variable(variable, game_type)
 
                         unless parsed.nil?
-                            if internal_processing_type == 'append'
-                                insert_at_index(other_trans_map, hash_index, parsed, '') unless other_trans_map.include?(parsed)
-                            else
-                                other_lines.add(parsed)
+                            if internal_processing_type == 'append' && !other_translation_map.include?(parsed)
+                                insert_at_index(other_translation_map, other_lines.length, parsed, '')
                             end
 
-                            hash_index += 1
+                            other_lines.add(parsed)
                         end
                     end
                 end
             end
         else
-            hash_index = 0
             other_object_array.each do |object|
                 pages = object.instance_variable_get(:@pages)
                 pages_length = pages.nil? ? 1 : pages.length
@@ -327,16 +318,14 @@ def self.read_other(other_files, output_path, logging, game_type, processing_typ
                                 if in_sequence
                                     joined = line.join('\#')
 
-                                    if internal_processing_type == 'append'
-                                        insert_at_index(other_trans_map, hash_index, joined, '') unless other_trans_map.include?(joined)
-                                    else
-                                        other_lines.add(joined)
+                                    if internal_processing_type == 'append' && !other_translation_map.include?(joined)
+                                        insert_at_index(other_translation_map, other_lines.length, joined, '')
                                     end
+
+                                    other_lines.add(joined)
 
                                     line.clear
                                     in_sequence = false
-
-                                    hash_index += 1
                                 end
 
                                 case code
@@ -344,13 +333,11 @@ def self.read_other(other_files, output_path, logging, game_type, processing_typ
                                         if parameter.is_a?(Array)
                                             parameter.each do |subparameter|
                                                 if subparameter.is_a?(String) && !subparameter.empty?
-                                                    if internal_processing_type == 'append'
-                                                        insert_at_index(other_trans_map, hash_index, subparameter, '') unless other_trans_map.include?(subparameter)
-                                                    else
-                                                        other_lines.add(subparameter)
+                                                    if internal_processing_type == 'append' && !other_translation_map.include?(subparameter)
+                                                        insert_at_index(other_translation_map, other_lines.length, subparameter, '')
                                                     end
 
-                                                    hash_index += 1
+                                                    other_lines.add(subparameter)
                                                 end
                                             end
                                         end
@@ -359,12 +346,10 @@ def self.read_other(other_files, output_path, logging, game_type, processing_typ
                                             subbed = parameter.gsub(/\r?\n/, '\#')
 
                                             if internal_processing_type == 'append'
-                                                insert_at_index(other_trans_map, hash_index, subbed, '')
-                                            else
-                                                other_lines.add(subbed)
+                                                insert_at_index(other_translation_map, other_lines.length, subbed, '')
                                             end
 
-                                            hash_index += 1
+                                            other_lines.add(subbed)
                                         end
                                     else
                                         nil
@@ -378,13 +363,14 @@ def self.read_other(other_files, output_path, logging, game_type, processing_typ
 
         puts "Parsed #{filename}" if logging
 
-        if processing_type == 'append'
-            File.binwrite(other_output_path, other_trans_map.keys.join("\n"))
-            File.binwrite(other_trans_output_path, other_trans_map.values.join("\n"))
-        else
-            File.binwrite(other_output_path, other_lines.join("\n"))
-            File.binwrite(other_trans_output_path, "\n" * (other_lines.empty? ? 0 : other_lines.length - 1))
-        end
+        original_content, translated_content = if processing_type == 'append'
+                                                   [other_translation_map.keys.join("\n"), other_translation_map.values.join("\n")]
+                                               else
+                                                   [other_lines.join("\n"), "\n" * (other_lines.empty? ? 0 : other_lines.length - 1)]
+                                               end
+
+        File.binwrite(other_output_path, original_content)
+        File.binwrite(other_trans_output_path, translated_content)
     end
 end
 
@@ -412,19 +398,16 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
 
     system_object = Marshal.load(File.binread(system_file_path))
 
-    system_lines = nil
-    system_trans_map = nil
+    system_lines = IndexSet.new
+    system_translation_map = nil
 
     if processing_type == 'append'
         if File.exist?(system_trans_output_path)
-            system_trans_map = Hash[File.readlines(system_output_path, chomp: true).zip(File.readlines(system_trans_output_path, chomp: true))]
+            system_translation_map = Hash[File.readlines(system_output_path, chomp: true).zip(File.readlines(system_trans_output_path, chomp: true))]
         else
-            puts 'Files aren\'t already parsed. Continuing as if --append flag was omitted.'
-            system_lines = IndexSet.new
+            puts "Files aren't already parsed. Continuing as if --append flag was omitted."
             processing_type = 'default'
         end
-    else
-        system_lines = IndexSet.new
     end
 
     elements = system_object.instance_variable_get(:@elements)
@@ -435,32 +418,26 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
     terms = system_object.instance_variable_get(:@terms) || system_object.instance_variable_get(:@words)
     game_title = system_object.instance_variable_get(:@game_title)
 
-    hash_index = 0
-
     [elements, skill_types, weapon_types, armor_types].each do |array|
         next if array.nil?
 
         array.each do |string|
             if string.is_a?(String) && !string.empty?
-                if processing_type == 'append'
-                    insert_at_index(system_trans_map, hash_index, string, '') unless system_trans_map.include?(string)
-                else
-                    system_lines.add(string)
+                if processing_type == 'append' && !system_translation_map.include?(string)
+                    insert_at_index(system_translation_map, system_lines.length, string, '')
                 end
 
-                hash_index += 1
+                system_lines.add(string)
             end
         end
     end
 
     if currency_unit.is_a?(String) && !currency_unit.empty?
-        if processing_type == 'append'
-            insert_at_index(system_trans_map, hash_index, currency_unit, '') unless system_trans_map.include?(currency_unit)
-        else
-            system_lines.add(currency_unit)
+        if processing_type == 'append' && !system_translation_map.include?(currency_unit)
+            insert_at_index(system_translation_map, system_lines.length, currency_unit, '')
         end
 
-        hash_index += 1
+        system_lines.add(currency_unit)
     end
 
     terms.instance_variables.each do |variable|
@@ -468,13 +445,11 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
 
         if value.is_a?(String)
             unless value.empty?
-                if processing_type == 'append'
-                    insert_at_index(system_trans_map, hash_index, value, '') unless system_trans_map.include?(value)
-                else
-                    system_lines.add(value)
+                if processing_type == 'append' && !system_translation_map.include?(value)
+                    insert_at_index(system_translation_map, system_lines.length, value, '')
                 end
 
-                hash_index += 1
+                system_lines.add(value)
             end
 
             next
@@ -482,13 +457,11 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
 
         value.each do |string|
             if string.is_a?(String) && !string.empty?
-                if processing_type == 'append'
-                    insert_at_index(system_trans_map, hash_index, string, '') unless system_trans_map.include?(string)
-                else
-                    system_lines.add(string)
+                if processing_type == 'append' && !system_translation_map.include?(string)
+                    insert_at_index(system_translation_map, system_lines.length, string, '')
                 end
 
-                hash_index += 1
+                system_lines.add(string)
             end
         end
     end
@@ -507,39 +480,37 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
             $wait_time = Time.now - wait_time_start
 
             if choice == 0
-                if processing_type == 'append'
-                    insert_at_index(system_trans_map, hash_index, game_title, '') unless system_trans_map.include?(game_title)
-                else
-                    system_lines.add(game_title)
+                if processing_type == 'append' && !system_translation_map.include?(game_title)
+                    insert_at_index(system_translation_map, system_lines.length, game_title, '')
                 end
+
+                system_lines.add(game_title)
             else
-                if processing_type == 'append'
-                    insert_at_index(system_trans_map, hash_index, ini_game_title, '') unless system_trans_map.include?(ini_game_title)
-                else
-                    system_lines.add(ini_game_title)
+                if processing_type == 'append' && !system_translation_map.include?(ini_game_title)
+                    insert_at_index(system_translation_map, system_lines.length, ini_game_title, '')
                 end
-            end
-        else
-            if processing_type == 'append'
-                insert_at_index(system_trans_map, hash_index, ini_game_title, '') unless system_trans_map.include?(ini_game_title)
-            else
+
                 system_lines.add(ini_game_title)
             end
-        end
+        else
+            if processing_type == 'append' && !system_translation_map.include?(ini_game_title)
+                insert_at_index(system_translation_map, system_lines.length, ini_game_title, '')
+            end
 
-        hash_index += 1
+            system_lines.add(ini_game_title)
+        end
     end
 
     puts "Parsed #{system_filename}" if logging
 
-    if processing_type == 'append'
-        File.binwrite(system_output_path, system_trans_map.keys.join("\n"))
-        File.binwrite(system_trans_output_path, system_trans_map.values.join("\n"))
-    else
-        File.binwrite(system_output_path, system_lines.join("\n"))
-        File.binwrite(system_trans_output_path, "\n" * (system_lines.empty? ? 0 : system_lines.length - 1))
-    end
+    original_content, translated_content = if processing_type == 'append'
+                                               [system_translation_map.keys.join("\n"), system_translation_map.values.join("\n")]
+                                           else
+                                               [system_lines.join("\n"), "\n" * (system_lines.empty? ? 0 : system_lines.length - 1)]
+                                           end
 
+    File.binwrite(system_output_path, original_content)
+    File.binwrite(system_trans_output_path, translated_content)
 end
 
 def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
@@ -557,23 +528,19 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
 
     script_entries = Marshal.load(File.binread(scripts_file_path))
 
-    scripts_lines = nil
-    scripts_trans_map = nil
+    scripts_lines = IndexSet.new
+    scripts_translation_map = nil
 
     if processing_type == 'append'
         if File.exist?(scripts_trans_output_path)
-            scripts_trans_map = Hash[File.readlines(scripts_output_path, chomp: true).zip(File.readlines(scripts_trans_output_path, chomp: true))]
+            scripts_translation_map = Hash[File.readlines(scripts_output_path, chomp: true).zip(File.readlines(scripts_trans_output_path, chomp: true))]
         else
-            puts 'Files aren\'t already parsed. Continuing as if --append flag was omitted.'
+            puts "Files aren't already parsed. Continuing as if --append flag was omitted."
             processing_type = 'default'
-            scripts_lines = IndexSet.new
         end
-    else
-        scripts_lines = IndexSet.new
     end
 
     codes_content = []
-    hash_index = 0
 
     script_entries.each do |script|
         code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
@@ -628,13 +595,11 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
                 string.match?(/Clear image/) ||
                 string.match?(/Can Collapse/)
 
-            if processing_type == 'append'
-                insert_at_index(scripts_trans_map, hash_index, string, '') unless scripts_trans_map.include?(string)
-            else
-                scripts_lines.add(string)
+            if processing_type == 'append' && !scripts_translation_map.include?(string)
+                insert_at_index(scripts_translation_map, scripts_lines.length, string, '')
             end
 
-            hash_index += 1
+            scripts_lines.add(string)
         end
     end
 
@@ -642,11 +607,12 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
 
     File.binwrite(scripts_plain_output_path, codes_content.join("\n"))
 
-    if processing_type == 'append'
-        File.binwrite(scripts_output_path, scripts_trans_map.keys.join("\n"))
-        File.binwrite(scripts_trans_output_path, scripts_trans_map.values.join("\n"))
-    else
-        File.binwrite(scripts_output_path, scripts_lines.join("\n"))
-        File.binwrite(scripts_trans_output_path, "\n" * (scripts_lines.empty? ? 0 : scripts_lines.length - 1))
-    end
+    original_content, translated_content = if processing_type == 'append'
+                                               [scripts_translation_map.keys.join("\n"), scripts_translation_map.values.join("\n")]
+                                           else
+                                               [scripts_lines.join("\n"), "\n" * (scripts_lines.empty? ? 0 : scripts_lines.length - 1)]
+                                           end
+
+    File.binwrite(scripts_output_path, original_content)
+    File.binwrite(scripts_trans_output_path, translated_content)
 end
