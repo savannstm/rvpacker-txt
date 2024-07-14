@@ -23,7 +23,7 @@ def self.parse_options
             options[:output_dir] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
         end
 
-        cmd.on('--disable-processing FILES', Array, 'Don\'t process specified files (maps, other, system, plugins)') do |files|
+        cmd.on('--disable-processing FILES', Array, "Don't process specified files (maps, other, system, plugins)") do |files|
             files.each do |file|
                 index = %w[maps other system scripts].index(file)
                 options[:disable_processing][index] = true if index
@@ -34,7 +34,7 @@ def self.parse_options
             options[:shuffle_level] = num
         end
 
-        cmd.on('--disable_custom_processing', 'Disables built-in custom parsing/writing for some games') do
+        cmd.on('--disable-custom-processing', 'Disables built-in custom parsing/writing for some games') do
             options[:disable_custom_processing] = true
         end
 
@@ -42,11 +42,11 @@ def self.parse_options
             options[:logging] = true
         end
 
-        cmd.on('-f', '--force', 'Force rewrite all files. Cannot be used with --append.', 'USE WITH CAUTION!') do
+        cmd.on('-f', '--force', 'Force rewrite all files. Cannot be used with --append', 'USE WITH CAUTION!') do
             options[:force] = true
         end
 
-        cmd.on('-a', '--append', 'When you update the rvpacker-txt, you probably should re-read your files with append, as some new text might be added to parser.', 'Cannot be used with --force') do
+        cmd.on('-a', '--append', 'When you update the rvpacker-txt, you probably should re-read', 'your files with append, as some new text might be added to parser', 'Cannot be used with --force') do
             raise '--append cannot be used beside --force.' if options[:force]
             options[:append] = true
         end

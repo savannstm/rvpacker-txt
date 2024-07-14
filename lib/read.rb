@@ -392,7 +392,7 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
     system_trans_output_path = File.join(output_path, "#{system_basename}_trans.txt")
 
     if processing_type == 'default' && File.exist?(system_trans_output_path)
-        puts "system_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files."
+        puts 'system_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
         return
     end
 
@@ -416,7 +416,6 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
     armor_types = system_object.instance_variable_get(:@armor_types)
     currency_unit = system_object.instance_variable_get(:@currency_unit)
     terms = system_object.instance_variable_get(:@terms) || system_object.instance_variable_get(:@words)
-    game_title = system_object.instance_variable_get(:@game_title)
 
     [elements, skill_types, weapon_types, armor_types].each do |array|
         next if array.nil?
@@ -466,40 +465,16 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
         end
     end
 
+    # Game title from System file and ini file may differ, but requesting user request to determine which line do they want is LAME
+    # So just throw that ini ass and continue
+    _game_title = system_object.instance_variable_get(:@game_title)
     ini_game_title = read_ini_title(ini_file_path)
 
-    $wait_time = 0
-
-    if ini_game_title != game_title
-        if game_title.is_a?(String) && !game_title.empty?
-            wait_time_start = Time.now
-
-            puts "Game title from the Game.ini file and game title from the System file are different.\nWhich game title would you like to parse?\n(That doesn't affect anything major, just when you'll write the game back, translated game title will be applied both to the .ini and System file.)\n0, System title - #{game_title}\n1, Game.ini title - #{ini_game_title}"
-            choice = gets.chomp.to_i
-
-            $wait_time = Time.now - wait_time_start
-
-            if choice == 0
-                if processing_type == 'append' && !system_translation_map.include?(game_title)
-                    insert_at_index(system_translation_map, system_lines.length, game_title, '')
-                end
-
-                system_lines.add(game_title)
-            else
-                if processing_type == 'append' && !system_translation_map.include?(ini_game_title)
-                    insert_at_index(system_translation_map, system_lines.length, ini_game_title, '')
-                end
-
-                system_lines.add(ini_game_title)
-            end
-        else
-            if processing_type == 'append' && !system_translation_map.include?(ini_game_title)
-                insert_at_index(system_translation_map, system_lines.length, ini_game_title, '')
-            end
-
-            system_lines.add(ini_game_title)
-        end
+    if processing_type == 'append' && !system_translation_map.include?(ini_game_title)
+        insert_at_index(system_translation_map, system_lines.length, ini_game_title, '')
     end
+
+    system_lines.add(ini_game_title)
 
     puts "Parsed #{system_filename}" if logging
 
@@ -522,7 +497,7 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
     scripts_trans_output_path = File.join(output_path, "#{scripts_basename}_trans.txt")
 
     if processing_type == 'default' && File.exist?(scripts_trans_output_path)
-        puts "scripts_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files."
+        puts 'scripts_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
         return
     end
 
@@ -546,7 +521,7 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
         code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
         codes_content.push(code)
 
-        extract_quoted_strings(code).keys.each do |string|
+        extract_quoted_strings(code).each_key do |string|
             string.strip!
 
             # Removes the U+3000 Japanese typographical space to check if string, when stripped, is truly empty
