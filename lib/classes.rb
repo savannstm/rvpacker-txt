@@ -21,7 +21,6 @@ DEALINGS IN THE SOFTWARE.
 class Table
     def initialize(bytes)
         @dim, @x, @y, @z, items, *@data = bytes.unpack('L5 S*')
-
         raise 'Size mismatch loading Table from data' unless items == @data.length && @x * @y * @z == items
     end
 

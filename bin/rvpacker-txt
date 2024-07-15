@@ -5,11 +5,9 @@ require 'optparse'
 require 'fileutils'
 
 require 'classes'
-require 'read'
-require 'write'
 
 def self.parse_options
-    options = { disable_processing: Array.new(4, false) }
+    options = { disable_processing: {}, input_dir: './', output_dir: './', shuffle_level: 0 }
 
     OptionParser.new do |cmd|
         cmd.banner = "This tool allows to parse RPG Maker project to .txt files and back.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - Parses RPG Maker game files to .txt\n    write - Writes parsed files back to their initial form\nOPTIONS:\n"
@@ -23,10 +21,11 @@ def self.parse_options
             options[:output_dir] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
         end
 
-        cmd.on('--disable-processing FILES', Array, "Don't process specified files (maps, other, system, plugins)") do |files|
+        cmd.on('--disable-processing FILES', Array, "Don't process specified files (maps, other, system, scripts)") do |files|
             files.each do |file|
-                index = %w[maps other system scripts].index(file)
-                options[:disable_processing][index] = true if index
+                files = %w[maps other system scripts]
+                index = files.index(file)
+                options[:disable_processing][files[index]] = true if index
             end
         end
 
@@ -64,6 +63,8 @@ def self.parse_options
     options
 end
 
+# @param [String] system_file_path
+# @return [String, nil]
 def self.get_game_type(system_file_path)
     object = Marshal.load(File.binread(system_file_path))
     game_title = object.instance_variable_get(:@game_title).to_s.downcase
@@ -87,21 +88,17 @@ extensions = { xp: '.rxdata', vx: 'rvdata', ace: 'rvdata2' }
 original_directory = Dir.glob(File.join(input_dir, '{data,original}'), File::FNM_CASEFOLD).first
 raise '"Data" or "original" directory not found within input directory.' unless original_directory
 
-paths = {
-    original_path: original_directory,
-    translation_path: File.join(input_dir, 'translation'),
-    maps_path: File.join(input_dir, 'translation', 'maps'),
-    other_path: File.join(input_dir, 'translation', 'other'),
-    output_path: File.join(output_dir, 'output')
-}
+maps_path = File.join(input_dir, 'translation', 'maps')
+other_path = File.join(input_dir, 'translation', 'other')
 
-paths.each_value { |path| FileUtils.mkdir_p(path) }
+FileUtils.mkdir_p(maps_path)
+FileUtils.mkdir_p(other_path)
 
-engine = extensions.find do |symbol, extension|
-    symbol if File.exist?(File.join(paths[:original_path], "System.#{extension}"))
+engine = extensions.find do |_symbol, extension|
+    File.exist?(File.join(original_directory, "System.#{extension}"))
 end || (raise "Couldn't determine project engine.")
 
-files = Dir.glob("#{paths[:original_path]}/*#{extensions[engine]}")
+files = Dir.glob("#{original_directory}/*#{extensions[engine[0]]}")
 
 maps_files_paths = []
 other_files_paths = []
@@ -110,6 +107,7 @@ scripts_file_path = nil
 
 files.each do |file|
     basename = File.basename(file)
+    next unless basename.end_with?(extensions[engine[0]])
 
     if basename.start_with?(/Map[0-9]/)
         maps_files_paths.push(file)
@@ -122,7 +120,7 @@ files.each do |file|
     end
 end
 
-ini_file_path = File.join(input_dir, "Game.ini")
+ini_file_path = File.join(input_dir, 'Game.ini')
 
 game_type = disable_custom_processing ? nil : get_game_type(system_file_path)
 
@@ -130,7 +128,7 @@ wait_time = 0
 processing_type = if force
                       wait_time_start = Time.now
 
-                      puts "WARNING! You\'re about to forcefully rewrite all your translation files, including _trans files.\nIf you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.\nInput 'Y' to continue."
+                      puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.\nIf you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.\nInput 'Y' to continue."
                       exit unless gets.chomp == 'Y'
 
                       wait_time = Time.now - wait_time_start
@@ -142,18 +140,23 @@ processing_type = if force
 puts 'Custom processing for this game is enabled. Use --disable-custom-processing to disable it.' unless game_type.nil?
 
 if options[:action] == 'read'
-    read_map(maps_files_paths, paths[:maps_path], logging, game_type, processing_type) unless disable_processing[0]
-    read_other(other_files_paths, paths[:other_path], logging, game_type, processing_type) unless disable_processing[1]
-    read_system(system_file_path, ini_file_path, paths[:other_path], logging, processing_type) unless disable_processing[2]
-    read_scripts(scripts_file_path, paths[:other_path], logging, processing_type) unless disable_processing[3]
+    require 'read'
+    read_map(maps_files_paths, maps_path, logging, game_type, processing_type) unless disable_processing[:maps]
+    read_other(other_files_paths, other_path, logging, game_type, processing_type) unless disable_processing[:other]
+    read_system(system_file_path, ini_file_path, other_path, logging, processing_type) unless disable_processing[:system]
+    read_scripts(scripts_file_path, other_path, logging, processing_type) unless disable_processing[:scripts]
 else
-    write_map(maps_files_paths, paths[:maps_path], paths[:output_path], shuffle_level, logging, game_type, processing_type) unless disable_processing[0]
-    write_other(other_files_paths, paths[:other_path], paths[:output_path], shuffle_level, logging, game_type, processing_type) unless disable_processing[1]
-    write_system(system_file_path, ini_file_path, paths[:other_path], paths[:output_path], shuffle_level, logging, processing_type) unless disable_processing[2]
-    write_scripts(scripts_file_path, paths[:other_path], paths[:output_path], logging, processing_type) unless disable_processing[3]
+    require 'write'
+    output_path = File.join(output_dir, 'output')
+    FileUtils.mkdir_p(output_path)
+
+    write_map(maps_files_paths, maps_path, output_path, shuffle_level, logging, game_type) unless disable_processing[:maps]
+    write_other(other_files_paths, other_path, output_path, shuffle_level, logging, game_type) unless disable_processing[:other]
+    write_system(system_file_path, ini_file_path, other_path, output_path, shuffle_level, logging) unless disable_processing[:system]
+    write_scripts(scripts_file_path, other_path, output_path, logging) unless disable_processing[:scripts]
 end
 
 $wait_time = 0 if $wait_time.nil?
-end_time = Time.now - start_time - wait_time - $wait_time
+elapsed_time = Time.now - start_time - wait_time - $wait_time
 
-puts "Done in #{end_time}"
+puts "Done in #{elapsed_time}"
