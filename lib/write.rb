@@ -161,98 +161,95 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
     maps_translation_map = Hash[maps_original_text.zip(maps_translated_text)].freeze
     names_translation_map = Hash[names_original_text.zip(names_translated_text)].freeze
 
-    allowed_codes = [401, 402, 356, 102].freeze
+    # 401 - dialogue lines
+    # 102 - dialogue choices array
+    # 402 - one of the dialogue choices from the array
+    # 356 - system lines/special texts (do they even exist before mv?)
+    allowed_codes = [401, 102, 402, 356].freeze
 
     maps_object_map.each do |filename, object|
-        display_name = object.instance_variable_get(:@display_name)
+        display_name = object.display_name
         display_name_gotten = names_translation_map[display_name]
-        object.instance_variable_set(:@display_name, display_name_gotten) unless display_name_gotten.nil?
+        object.display_name = display_name_gotten unless display_name_gotten.nil?
 
-        events = object.instance_variable_get(:@events)
+        events = object.events
         next if events.nil?
 
         events.each_value do |event|
-            pages = event.instance_variable_get(:@pages)
+            pages = event.pages
             next if pages.nil?
 
             pages.each do |page|
-                list = page.instance_variable_get(:@list)
+                list = page.list
                 next if list.nil?
 
                 in_sequence = false
                 line = []
                 item_indices = []
-                parameter_indices = []
 
                 list.each_with_index do |item, it|
-                    code = item.instance_variable_get(:@code)
-                    next unless allowed_codes.include?(code)
+                    code = item.code
 
-                    parameters = item.instance_variable_get(:@parameters)
+                    unless allowed_codes.include?(code)
+                        if in_sequence
+                            joined = line.join('\#').strip
+                            translated = get_parameter_translated(401, joined, maps_translation_map, game_type)
 
-                    parameters.each_with_index do |parameter, pr|
-                        if code == 401
-                            next unless parameter.is_a?(String) && !parameter.empty?
+                            unless translated.nil? || translated.empty?
+                                split = translated.split('\#')
 
-                            in_sequence = true
-                            line.push(parameter)
-                            item_indices.push(it)
-                            parameter_indices.push(pr)
-                        else
-                            if in_sequence
-                                joined = line.join('\#').strip
-                                translated = get_parameter_translated(401, joined, maps_translation_map, game_type)
+                                split_length = split.length
+                                line_length = line.length
 
-                                unless translated.nil? || translated.empty?
-                                    split = translated.split('\#')
-
-                                    (0..line.length - 1).each do |i|
-                                        list[item_indices[i]].instance_variable_get(:@parameters)[parameter_indices[i]] = split[i]
-                                    end
+                                item_indices.each_with_index do |index, i|
+                                    list[index].parameters[0] = i < split_length ? split[i] : ''
                                 end
 
-                                line.clear
-                                item_indices.clear
-                                parameter_indices.clear
-                                in_sequence = false
+                                list[item_indices.last].parameters[0] = split[line_length..].join("\n") if split_length > line_length
                             end
+                        end
+                        next
+                    end
 
-                            case code
-                                when 402
-                                    next unless parameter.is_a?(String)
+                    parameters = item.parameters
 
-                                    parameter = parameter.strip
-                                    next if parameter.empty?
+                    if code == 401
+                        next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
-                                    translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                                    parameters[pr] = translated unless translated.nil? || translated.empty?
-                                when 102
-                                    next unless parameter.is_a?(Array)
+                        in_sequence = true
+                        line.push(parameters[0])
+                        item_indices.push(it)
+                    elsif code == 356
+                        parameter = parameters[0]
+                        next unless parameter.is_a?(String)
 
-                                    parameter.each_with_index do |subparameter, sp|
-                                        next unless subparameter.is_a?(String)
+                        parameter = parameter.strip
+                        next if parameter.empty?
 
-                                        subparameter = subparameter.strip
-                                        next if subparameter.empty?
+                        translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
+                        parameters[0] = translated unless translated.nil? || translated.empty?
+                    elsif code == 402
+                        parameter = parameters[1]
+                        next unless parameter.is_a?(String)
 
-                                        translated = get_parameter_translated(code, subparameter, maps_translation_map, game_type)
-                                        parameters[pr][sp] = translated unless translated.nil? || translated.empty?
-                                    end
-                                when 356
-                                    next unless parameter.is_a?(String)
+                        parameter = parameter.strip
+                        next if parameter.empty?
 
-                                    parameter = parameter.strip
-                                    next if parameter.empty?
+                        translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
+                        parameters[1] = translated unless translated.nil? || translated.empty?
+                    elsif code == 102 && parameters[0].is_a?(Array)
+                        parameters[0].each_with_index do |subparameter, sp|
+                            next unless subparameter.is_a?(String)
 
-                                    translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                                    parameters[pr] = translated unless translated.nil? || translated.empty?
-                                else
-                                    nil
-                            end
+                            subparameter = subparameter.strip
+                            next if subparameter.empty?
+
+                            translated = get_parameter_translated(code, subparameter, maps_translation_map, game_type)
+                            parameters[0][sp] = translated unless translated.nil? || translated.empty?
                         end
                     end
 
-                    item.instance_variable_set(:@parameters, parameters)
+                    item.parameters = parameters
                 end
             end
         end
@@ -277,7 +274,12 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
         [basename, object]
     end]
 
-    allowed_codes = [401, 402, 405, 356, 102].freeze
+    # 401 - dialogue lines
+    # 405 - credits lines
+    # 102 - dialogue choices array
+    # 402 - one of the dialogue choices from the array
+    # 356 - system lines/special texts (do they even exist before mv?)
+    allowed_codes = [401, 405, 102, 402, 356].freeze
 
     other_object_array_map.each do |filename, other_object_array|
         other_filename = File.basename(filename, '.*').downcase
@@ -299,17 +301,12 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
             other_object_array.each do |object|
                 next if object.nil?
 
-                variables_symbols = %i[@name @nickname @description @note].freeze
+                name = object.name
+                nickname = object.nickname
+                description = object.description
+                note = object.note
 
-                name = object.instance_variable_get(variables_symbols[0])
-                nickname = object.instance_variable_get(variables_symbols[1])
-                description = object.instance_variable_get(variables_symbols[2])
-                note = object.instance_variable_get(variables_symbols[3])
-
-                [[variables_symbols[0], name],
-                 [variables_symbols[1], nickname],
-                 [variables_symbols[2], description],
-                 [variables_symbols[3], note]].each do |symbol, variable|
+                [name, nickname, description, note].each_with_index do |variable, i|
                     next unless variable.is_a?(String)
 
                     variable = variable.strip
@@ -318,92 +315,96 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                     variable = variable.gsub(/\r\n/, "\n")
 
                     translated = get_variable_translated(variable, other_translation_map, game_type)
-                    object.instance_variable_set(symbol, translated) unless translated.nil? || translated.empty?
+
+                    if i.zero?
+                        object.name = translated unless translated.nil? || translated.empty?
+                    elsif i == 1
+                        object.nickname = translated unless translated.nil? || translated.empty?
+                    elsif i == 2
+                        object.description = translated unless translated.nil? || translated.empty?
+                    else
+                        object.note = translated unless translated.nil? || translated.empty?
+                    end
                 end
             end
         else
             other_object_array.each do |object|
-                pages = object.instance_variable_get(:@pages)
+                next if object.nil?
+
+                pages = object.pages
                 pages_length = pages.nil? ? 1 : pages.length
 
                 (0..pages_length).each do |pg|
-                    list = pages.nil? ? object.instance_variable_get(:@list) : pages[pg].instance_variable_get(:@list)
+                    list = pages.nil? ? object.list : pages[pg].instance_variable_get(:@list) # for some reason .list access doesn't work (wtf?)
                     next if list.nil?
 
                     in_sequence = false
                     line = []
                     item_indices = []
-                    parameter_indices = []
 
                     list.each_with_index do |item, it|
-                        code = item.instance_variable_get(:@code)
-                        next unless allowed_codes.include?(code)
+                        code = item.code
 
-                        parameters = item.instance_variable_get(:@parameters)
+                        unless allowed_codes.include?(code)
+                            if in_sequence
+                                joined = line.join('\#').strip
+                                translated = get_parameter_translated(401, joined, other_translation_map, game_type)
 
-                        parameters.each_with_index do |parameter, pr|
-                            if [401, 405].include?(code)
-                                next unless parameter.is_a?(String) && !parameter.empty?
+                                unless translated.nil? || translated.empty?
+                                    split = translated.split('\#')
 
-                                in_sequence = true
-                                line.push(parameter)
-                                item_indices.push(it)
-                                parameter_indices.push(pr)
-                            else
-                                if in_sequence
-                                    joined = line.join('\#').strip
-                                    translated = get_parameter_translated(401, joined, other_translation_map, game_type)
+                                    split_length = split.length
+                                    line_length = line.length
 
-                                    unless translated.nil? || translated.empty?
-                                        split = translated.split('\#')
-
-                                        (0..line.length - 1).each do |i|
-                                            list[item_indices[i]].instance_variable_get(:@parameters)[parameter_indices[i]] = split[i]
-                                        end
+                                    item_indices.each_with_index do |index, i|
+                                        list[index].parameters[0] = i < split_length ? split[i] : ''
                                     end
 
-                                    line.clear
-                                    item_indices.clear
-                                    parameter_indices.clear
-                                    in_sequence = false
+                                    list[item_indices.last].parameters[0] = split[line_length..].join("\n") if split_length > line_length
                                 end
+                            end
+                            next
+                        end
 
-                                case code
-                                    when 402
-                                        next unless parameter.is_a?(String)
+                        parameters = item.parameters
 
-                                        parameter = parameter.strip
-                                        next if parameter.empty?
+                        if [401, 405].include?(code)
+                            next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
-                                        translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                                        parameters[pr] = translated unless translated.nil? || translated.empty?
-                                    when 102
-                                        next unless parameter.is_a?(Array)
+                            in_sequence = true
+                            line.push(parameters[0])
+                            item_indices.push(it)
+                        elsif code == 356
+                            parameter = parameters[0]
+                            next unless parameter.is_a?(String)
 
-                                        parameter.each_with_index do |subparameter, sp|
-                                            next unless subparameter.is_a?(String)
+                            parameter = parameter.strip
+                            next if parameter.empty?
 
-                                            subparameter = subparameter.strip
-                                            next if subparameter.empty?
+                            translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
+                            parameters[0] = translated unless translated.nil? || translated.empty?
+                        elsif code == 402
+                            parameter = parameters[1]
+                            next unless parameter.is_a?(String)
 
-                                            translated = get_parameter_translated(code, subparameter, other_translation_map, game_type)
-                                            parameters[pr][sp] = translated unless translated.nil? || translated.empty?
-                                        end
-                                    when 356
-                                        next unless parameter.is_a?(String)
+                            parameter = parameter.strip
+                            next if parameter.empty?
 
-                                        parameter = parameter.strip
-                                        next if parameter.empty?
+                            translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
+                            parameters[1] = translated unless translated.nil? || translated.empty?
+                        elsif code == 102 && parameters[0].is_a?(Array)
+                            parameters[0].each_with_index do |subparameter, sp|
+                                next unless subparameter.is_a?(String)
 
-                                        translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                                        parameters[pr] = translated unless translated.nil? || translated.empty?
-                                    else
-                                        nil
-                                end
+                                subparameter = subparameter.strip
+                                next if subparameter.empty?
+
+                                translated = get_parameter_translated(code, subparameter, other_translation_map, game_type)
+                                parameters[0][sp] = translated unless translated.nil? || translated.empty?
                             end
                         end
 
-                        item.instance_variable_set(:@parameters, parameters)
+                        item.parameters = parameters
                     end
                 end
             end
@@ -420,7 +421,7 @@ end
 def self.write_ini_title(ini_file_path, translated)
     file_lines = File.readlines(ini_file_path, chomp: true)
     title_line_index = file_lines.each_with_index do |line, i|
-        break i if line.start_with?('title')
+        break i if line.downcase.start_with?('title')
     end
 
     file_lines[title_line_index] = translated
@@ -451,14 +452,12 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
 
     system_translation_map = Hash[system_original_text.zip(system_translated_text)].freeze
 
-    system_symbols = %i[@elements @skill_types @weapon_types @armor_types @currency_unit @terms @words @game_title].freeze
-
-    elements = system_object.instance_variable_get(system_symbols[0])
-    skill_types = system_object.instance_variable_get(system_symbols[1])
-    weapon_types = system_object.instance_variable_get(system_symbols[2])
-    armor_types = system_object.instance_variable_get(system_symbols[3])
-    currency_unit = system_object.instance_variable_get(system_symbols[4])
-    terms = system_object.instance_variable_get(system_symbols[5]) || system_object.instance_variable_get(system_symbols[6])
+    elements = system_object.elements
+    skill_types = system_object.skill_types
+    weapon_types = system_object.weapon_types
+    armor_types = system_object.armor_types
+    currency_unit = system_object.currency_unit
+    terms = system_object.terms || system_object.words
 
     [elements, skill_types, weapon_types, armor_types].each_with_index.each do |array, i|
         next unless array.is_a?(Array)
@@ -471,11 +470,19 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
             !translated.nil? && !translated.empty? ? translated : stripped
         end
 
-        system_object.instance_variable_set(system_symbols[i], array)
+        if i.zero?
+            system_object.elements = array
+        elsif i == 1
+            system_object.skill_types = array
+        elsif i == 2
+            system_object.weapon_types = array
+        else
+            system_object.armor_types = array
+        end
     end
 
     currency_unit_translated = system_translation_map[currency_unit]
-    system_object.instance_variable_set(system_symbols[4], currency_unit_translated) if currency_unit.is_a?(String) &&
+    system_object.currency_unit = currency_unit_translated if currency_unit.is_a?(String) &&
         (!currency_unit_translated.nil? && !currency_unit_translated.empty?)
 
     terms.instance_variables.each do |variable|
@@ -500,12 +507,12 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
         terms.instance_variable_set(variable, value)
     end
 
-    system_object.instance_variable_defined?(system_symbols[5]) ?
-        system_object.instance_variable_set(system_symbols[5], terms) :
-        system_object.instance_variable_set(system_symbols[6], terms)
+    system_object.terms.nil? ?
+        system_object.words = terms :
+        system_object.terms = terms
 
     game_title_translated = system_translated_text[-1]
-    system_object.instance_variable_set(system_symbols[7], game_title_translated)
+    system_object.game_title = game_title_translated
     write_ini_title(ini_file_path, game_title_translated)
 
     puts "Written #{system_basename}" if logging
@@ -531,8 +538,16 @@ def self.write_scripts(scripts_file_path, other_path, output_path, logging)
     # Shuffle can possibly break the game in scripts, so no shuffling
     codes = []
 
+    # This code was fun before `that` game used Windows-1252 degree symbol
     script_entries.each do |script|
         code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
+
+        unless code.valid_encoding?
+            # who the fuck uses the degree symbol from FUCKING WINDOWS-1252 and NOT UTF-8
+            # also, String#encode does NOT FUCKING WORK and for some reason raises on the
+            # fucking degree symbol from windows-1252 when trying to encode
+            code.force_encoding('Windows-1252')
+        end
 
         # this shit finally works and requires NO further changes
         string_array, index_array = extract_quoted_strings(code)
@@ -551,6 +566,6 @@ def self.write_scripts(scripts_file_path, other_path, output_path, logging)
 
     puts "Written #{scripts_basename}" if logging
 
-    File.binwrite(File.join(output_path, 'scripts_plain.txt'), codes.join("\n"))
+    # File.binwrite(File.join(output_path, 'scripts_plain.txt'), codes.join("\n")) - debug line
     File.binwrite(File.join(output_path, scripts_basename), Marshal.dump(script_entries))
 end

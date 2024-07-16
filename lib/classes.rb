@@ -113,6 +113,69 @@ class IndexSet
 end
 
 module RPG
+    class Map
+        attr_accessor :display_name, :events
+    end
+
+    class Event
+        attr_accessor :pages
+
+        class Page
+            attr_accessor :list
+        end
+    end
+
+    class EventCommand
+        attr_accessor :code, :parameters
+    end
+
+    class Actor
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class Armor
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class Class
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class Enemy
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class Item
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class Skill
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class State
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class Weapon
+        attr_accessor :name, :nickname, :description, :note
+    end
+
+    class CommonEvent
+        attr_accessor :pages, :list
+    end
+
+    class Troop
+        attr_accessor :pages
+
+        class Page
+            attr_accessor :list
+        end
+    end
+
+    class System
+        attr_accessor :elements, :skill_types, :weapon_types, :armor_types, :currency_unit, :terms, :words, :game_title
+    end
 end
 
 module RGSS

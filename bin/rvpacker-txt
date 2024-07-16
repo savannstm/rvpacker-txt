@@ -45,7 +45,8 @@ def self.parse_options
             options[:force] = true
         end
 
-        cmd.on('-a', '--append', 'When you update the rvpacker-txt, you probably should re-read', 'your files with append, as some new text might be added to parser', 'Cannot be used with --force') do
+        cmd.on('-a', '--append', 'When you update the rvpacker-txt, you probably should re-read',
+               'your files with append, as some new text might be added to parser', 'Cannot be used with --force') do
             raise '--append cannot be used beside --force.' if options[:force]
             options[:append] = true
         end
@@ -83,7 +84,7 @@ disable_processing = options[:disable_processing]
 force = options[:force]
 append = options[:append]
 
-extensions = { xp: '.rxdata', vx: 'rvdata', ace: 'rvdata2' }
+extensions = { xp: 'rxdata', vx: 'rvdata', ace: 'rvdata2' }
 
 original_directory = Dir.glob(File.join(input_dir, '{data,original}'), File::FNM_CASEFOLD).first
 raise '"Data" or "original" directory not found within input directory.' unless original_directory
@@ -94,11 +95,11 @@ other_path = File.join(input_dir, 'translation', 'other')
 FileUtils.mkdir_p(maps_path)
 FileUtils.mkdir_p(other_path)
 
-engine = extensions.find do |_symbol, extension|
-    File.exist?(File.join(original_directory, "System.#{extension}"))
+engine = extensions.each do |symbol, extension|
+    break symbol if File.exist?(File.join(original_directory, "System.#{extension}"))
 end || (raise "Couldn't determine project engine.")
 
-files = Dir.glob("#{original_directory}/*#{extensions[engine[0]]}")
+files = Dir.glob("#{original_directory}/*#{extensions[engine]}")
 
 maps_files_paths = []
 other_files_paths = []
@@ -107,7 +108,7 @@ scripts_file_path = nil
 
 files.each do |file|
     basename = File.basename(file)
-    next unless basename.end_with?(extensions[engine[0]])
+    next unless basename.end_with?(extensions[engine])
 
     if basename.start_with?(/Map[0-9]/)
         maps_files_paths.push(file)
@@ -132,9 +133,9 @@ processing_type = if force
                       exit unless gets.chomp == 'Y'
 
                       wait_time = Time.now - wait_time_start
-                      'force'
+                      :force
                   else
-                      append ? 'append' : 'default'
+                      append ? :append : :default
                   end
 
 puts 'Custom processing for this game is enabled. Use --disable-custom-processing to disable it.' unless game_type.nil?
