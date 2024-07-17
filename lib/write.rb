@@ -219,25 +219,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                         in_sequence = true
                         line.push(parameters[0])
                         item_indices.push(it)
-                    elsif code == 356
-                        parameter = parameters[0]
-                        next unless parameter.is_a?(String)
-
-                        parameter = parameter.strip
-                        next if parameter.empty?
-
-                        translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                        parameters[0] = translated unless translated.nil? || translated.empty?
-                    elsif code == 402
-                        parameter = parameters[1]
-                        next unless parameter.is_a?(String)
-
-                        parameter = parameter.strip
-                        next if parameter.empty?
-
-                        translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                        parameters[1] = translated unless translated.nil? || translated.empty?
-                    elsif code == 102 && parameters[0].is_a?(Array)
+                    elsif parameters[0].is_a?(Array)
                         parameters[0].each_with_index do |subparameter, sp|
                             next unless subparameter.is_a?(String)
 
@@ -247,6 +229,18 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                             translated = get_parameter_translated(code, subparameter, maps_translation_map, game_type)
                             parameters[0][sp] = translated unless translated.nil? || translated.empty?
                         end
+                    elsif parameters[0].is_a?(String)
+                        parameter = parameters[0].strip
+                        next if parameter.empty?
+
+                        translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
+                        parameters[0] = translated unless translated.nil? || translated.empty?
+                    elsif parameters[1].is_a?(String)
+                        parameter = parameters[1].strip
+                        next if parameter.empty?
+
+                        translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
+                        parameters[1] = translated unless translated.nil? || translated.empty?
                     end
 
                     item.parameters = parameters
@@ -268,10 +262,7 @@ end
 # @param [String] game_type
 def self.write_other(original_files_paths, other_path, output_path, shuffle_level, logging, game_type)
     other_object_array_map = Hash[original_files_paths.map do |filename|
-        basename = File.basename(filename)
-        object = Marshal.load(File.binread(filename))
-
-        [basename, object]
+        [File.basename(filename), Marshal.load(File.binread(filename))]
     end]
 
     # 401 - dialogue lines
@@ -313,17 +304,18 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                     next if variable.empty?
 
                     variable = variable.gsub(/\r\n/, "\n")
-
                     translated = get_variable_translated(variable, other_translation_map, game_type)
 
-                    if i.zero?
-                        object.name = translated unless translated.nil? || translated.empty?
-                    elsif i == 1
-                        object.nickname = translated unless translated.nil? || translated.empty?
-                    elsif i == 2
-                        object.description = translated unless translated.nil? || translated.empty?
-                    else
-                        object.note = translated unless translated.nil? || translated.empty?
+                    unless translated.nil? || translated.empty?
+                        if i.zero?
+                            object.name = translated
+                        elsif i == 1
+                            object.nickname = translated
+                        elsif i == 2
+                            object.description = translated
+                        else
+                            object.note = translated
+                        end
                     end
                 end
             end
@@ -374,25 +366,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                             in_sequence = true
                             line.push(parameters[0])
                             item_indices.push(it)
-                        elsif code == 356
-                            parameter = parameters[0]
-                            next unless parameter.is_a?(String)
-
-                            parameter = parameter.strip
-                            next if parameter.empty?
-
-                            translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                            parameters[0] = translated unless translated.nil? || translated.empty?
-                        elsif code == 402
-                            parameter = parameters[1]
-                            next unless parameter.is_a?(String)
-
-                            parameter = parameter.strip
-                            next if parameter.empty?
-
-                            translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                            parameters[1] = translated unless translated.nil? || translated.empty?
-                        elsif code == 102 && parameters[0].is_a?(Array)
+                        elsif parameters[0].is_a?(Array)
                             parameters[0].each_with_index do |subparameter, sp|
                                 next unless subparameter.is_a?(String)
 
@@ -402,6 +376,18 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                                 translated = get_parameter_translated(code, subparameter, other_translation_map, game_type)
                                 parameters[0][sp] = translated unless translated.nil? || translated.empty?
                             end
+                        elsif parameters[0].is_a?(String)
+                            parameter = parameters[0].strip
+                            next if parameter.empty?
+
+                            translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
+                            parameters[0] = translated unless translated.nil? || translated.empty?
+                        elsif parameters[1].is_a?(String)
+                            parameter = parameters[1].strip
+                            next if parameter.empty?
+
+                            translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
+                            parameters[1] = translated unless translated.nil? || translated.empty?
                         end
 
                         item.parameters = parameters
@@ -540,13 +526,21 @@ def self.write_scripts(scripts_file_path, other_path, output_path, logging)
 
     # This code was fun before `that` game used Windows-1252 degree symbol
     script_entries.each do |script|
-        code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
+        code = Zlib::Inflate.inflate(script[2])
+        code.force_encoding('UTF-8')
 
+        # I figured how String#encode works - now everything is good
         unless code.valid_encoding?
-            # who the fuck uses the degree symbol from FUCKING WINDOWS-1252 and NOT UTF-8
-            # also, String#encode does NOT FUCKING WORK and for some reason raises on the
-            # fucking degree symbol from windows-1252 when trying to encode
-            code.force_encoding('Windows-1252')
+            [Encoding::UTF_8, Encoding::WINDOWS_1252, Encoding::SHIFT_JIS].each do |encoding|
+                encoded = code.encode(code.encoding, encoding)
+
+                if encoded.valid_encoding?
+                    code.force_encoding(encoding)
+                    break
+                end
+            rescue Encoding::InvalidByteSequenceError
+                next
+            end
         end
 
         # this shit finally works and requires NO further changes

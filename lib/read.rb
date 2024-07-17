@@ -199,42 +199,40 @@ def self.read_map(maps_files_paths, output_path, logging, game_type, processing_
                     end
 
                     parameters = item.parameters
-                    parameters.each do |parameter|
-                        if code == 401
-                            next unless parameter.is_a?(String) && !parameter.empty?
 
-                            in_sequence = true
-                            line.push(parameter)
-                        elsif code == 102 && parameter.is_a?(Array)
+                    if code == 401
+                        next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
-                            parameter.each do |subparameter|
-                                next unless subparameter.is_a?(String)
+                        in_sequence = true
+                        line.push(parameters[0])
+                    elsif parameters[0].is_a?(Array)
+                        parameters[0].each do |subparameter|
+                            next unless subparameter.is_a?(String)
 
-                                subparameter = subparameter.strip
-                                next if subparameter.empty?
+                            subparameter = subparameter.strip
+                            next if subparameter.empty?
 
-                                parsed = parse_parameter(code, subparameter, game_type)
-                                next if parsed.nil?
-
-                                maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_type == :append &&
-                                    !maps_translation_map.include?(parsed)
-
-                                maps_lines.add(parsed)
-                            end
-                        elsif code == 356 && parameter.is_a?(String)
-                            parameter = parameter.strip
-                            next if parameter.empty?
-
-                            parsed = parse_parameter(code, parameter, game_type)
+                            parsed = parse_parameter(code, subparameter, game_type)
                             next if parsed.nil?
-
-                            parsed = parsed.gsub(/\r?\n/, '\#')
 
                             maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_type == :append &&
                                 !maps_translation_map.include?(parsed)
 
                             maps_lines.add(parsed)
                         end
+                    elsif parameters[0].is_a?(String)
+                        parameter = parameters[0].strip
+                        next if parameter.empty?
+
+                        parsed = parse_parameter(code, parameter, game_type)
+                        next if parsed.nil?
+
+                        parsed = parsed.gsub(/\r?\n/, '\#')
+
+                        maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_type == :append &&
+                            !maps_translation_map.include?(parsed)
+
+                        maps_lines.add(parsed)
                     end
                 end
             end
@@ -366,45 +364,44 @@ def self.read_other(other_files_paths, output_path, logging, game_type, processi
                         end
 
                         parameters = item.parameters
-                        parameters.each do |parameter|
-                            if [401, 405].include?(code)
-                                next unless parameter.is_a?(String) && !parameter.empty?
 
-                                in_sequence = true
-                                line.push(parameter.gsub(/\r?\n/, '\#'))
-                            else
+                        if [401, 405].include?(code)
+                            next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
-                                case code
-                                    when 102
-                                        if parameter.is_a?(Array)
-                                            parameter.each do |subparameter|
-                                                next unless subparameter.is_a?(String)
+                            in_sequence = true
+                            line.push(parameters[0].gsub(/\r?\n/, '\#'))
+                        elsif parameters[0].is_a?(Array)
+                            parameters[0].each do |subparameter|
+                                next unless subparameter.is_a?(String)
 
-                                                subparameter = subparameter.strip
-                                                next if subparameter.empty?
+                                subparameter = subparameter.strip
+                                next if subparameter.empty?
 
-                                                other_translation_map.insert_at_index(other_lines.length, subparameter, '') if inner_processing_type == :append &&
-                                                    !other_translation_map.include?(subparameter)
+                                other_translation_map.insert_at_index(other_lines.length, subparameter, '') if inner_processing_type == :append &&
+                                    !other_translation_map.include?(subparameter)
 
-                                                other_lines.add(subparameter)
-                                            end
-                                        end
-                                    when 356
-                                        next unless parameter.is_a?(String)
-
-                                        parameter = parameter.strip
-                                        next if parameter.empty?
-
-                                        parameter = parameter.gsub(/\r?\n/, '\#')
-
-                                        other_translation_map.insert_at_index(other_lines.length, parameter, '') if inner_processing_type == :append &&
-                                            !other_translation_map.include?(parameter)
-
-                                        other_lines.add(parameter)
-                                    else
-                                        nil
-                                end
+                                other_lines.add(subparameter)
                             end
+                        elsif parameters[0].is_a?(String)
+                            parameter = parameters[0].strip
+                            next if parameter.empty?
+
+                            parameter = parameter.gsub(/\r?\n/, '\#')
+
+                            other_translation_map.insert_at_index(other_lines.length, parameter, '') if inner_processing_type == :append &&
+                                !other_translation_map.include?(parameter)
+
+                            other_lines.add(parameter)
+                        elsif parameters[1].is_a?(String)
+                            parameter = parameters[1].strip
+                            next if parameter.empty?
+
+                            parameter = parameter.gsub(/\r?\n/, '\#')
+
+                            other_translation_map.insert_at_index(other_lines.length, parameter, '') if inner_processing_type == :append &&
+                                !other_translation_map.include?(parameter)
+
+                            other_lines.add(parameter)
                         end
                     end
                 end
@@ -483,7 +480,6 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
             next unless string.is_a?(String)
 
             string = string.strip
-
             next if string.empty?
 
             system_translation_map.insert_at_index(system_lines.length, string, '') if processing_type == :append &&
@@ -524,7 +520,6 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
             next unless string.is_a?(String)
 
             string = string.strip
-
             next if string.empty?
 
             system_translation_map.insert_at_index(system_lines.length, string, '') if processing_type == :append &&
@@ -597,14 +592,19 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
         # we're fucking cloning because of encoding issue
         codes_content.push(code.clone)
 
+        # I figured how String#encode works - now everything is good
         unless code.valid_encoding?
-            # who the fuck uses the degree symbol from FUCKING WINDOWS-1252 and NOT UTF-8
-            # also, String#encode does NOT FUCKING WORK and for some reason raises on the
-            # fucking degree symbol from windows-1252 when trying to encode
-            code.force_encoding('Windows-1252')
-        end
+            [Encoding::UTF_8, Encoding::WINDOWS_1252, Encoding::SHIFT_JIS].each do |encoding|
+                encoded = code.encode(code.encoding, encoding)
 
-        raise unless code.valid_encoding?
+                if encoded.valid_encoding?
+                    code.force_encoding(encoding)
+                    break
+                end
+            rescue Encoding::InvalidByteSequenceError
+                next
+            end
+        end
 
         extract_quoted_strings(code).each do |string|
             # Removes the U+3000 Japanese typographical space to check if string, when stripped, is truly empty
@@ -614,7 +614,7 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
 
             # Maybe this mess will remove something that mustn't be removed, but it needs to be tested
             next if string.start_with?(/([#!?$@]|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
-                string.match(/^[^\p{L}]+$/) ||
+                string.match?(/^[^\p{L}]+$/) ||
                 string.match?(/^\d+$/) ||
                 string.match?(/%.*(\d|\+|\*)d\]?:?$/) ||
                 string.match?(/^\[(ON|OFF)\]$/) ||
