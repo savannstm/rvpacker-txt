@@ -75,8 +75,9 @@ def self.parse_parameter(code, parameter, game_type)
             when 401, 405
                 case game_type
                     when 'lisa'
-                        match = parameter.scan(/^(\\et\[[0-9]+\]|\\nbt)/)
-                        parameter = parameter.slice((match[0].length)..) unless match.empty?
+                        match = parameter.scan(/^\\et\[[0-9]+\]/)
+                        match = parameter.scan(/^\\nbt/) if match.empty?
+                        parameter = parameter[match[0].length..] unless match.empty?
                     else
                         nil
                 end
@@ -93,23 +94,14 @@ def self.parse_parameter(code, parameter, game_type)
 end
 
 # @param [String] variable
-# @param [String] game_type
+# @param [String] _game_type
 # @return [String]
-def self.parse_variable(variable, game_type)
-    unless game_type.nil?
-        lines_count = variable.count("\n")
-
-        if lines_count.positive?
-            variable = variable.gsub(/\r?\n/, '\#')
-
-            case game_type
-                when 'lisa'
-                    return nil unless variable.split('\#').all? { |line| line.match?(/^<.*>\.?$/) || line.empty? }
-                else
-                    nil
-            end
-        end
-    end
+def self.parse_variable(variable, _game_type)
+    variable = variable.gsub(/\r?\n/, '\#') if variable.count("\n").positive?
+    return nil if variable.split('\#').all? { |line| line.strip.match?(/(^#? ?<.*>\.?$)|^$/) }
+    return nil if variable.match?(/^[+-]?[0-9]*$/) ||
+        variable.match?(/---/) ||
+        variable.match?(/restrict eval/)
 
     variable
 end
@@ -356,11 +348,12 @@ def self.read_other(other_files_paths, output_path, logging, game_type, processi
                         unless allowed_codes.include?(code)
                             if in_sequence
                                 joined = line.join('\#').strip
+                                parsed = parse_parameter(401, joined, game_type)
 
-                                other_translation_map.insert_at_index(other_lines.length, joined, '') if inner_processing_type == :append &&
-                                    !other_translation_map.include?(joined)
+                                other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
+                                    !other_translation_map.include?(parsed)
 
-                                other_lines.add(joined)
+                                other_lines.add(parsed)
 
                                 line.clear
                                 in_sequence = false

@@ -80,7 +80,8 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
             when 401, 405
                 case game_type
                     when 'lisa'
-                        match = parameter.scan(/^(\\et\[[0-9]+\]|\\nbt)/)
+                        match = parameter.scan(/^\\et\[[0-9]+\]/)
+                        match = parameter.scan(/^\\nbt/) if match.empty?
 
                         unless match.empty?
                             lisa_start = match[0]
@@ -98,6 +99,7 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
         end
 
         gotten = hashmap[parameter]
+        return nil if gotten.nil?
 
         case game_type
             when 'lisa'
