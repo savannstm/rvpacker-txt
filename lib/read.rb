@@ -26,7 +26,7 @@ def self.extract_quoted_strings(string)
         stripped = line.strip
 
         next if stripped[0] == '#' ||
-            !stripped.match?(/["']/) ||
+            (!in_quotes && !stripped.match?(/["']/)) ||
             stripped.start_with?(/(Win|Lose)|_Fanfare/) ||
             stripped.match?(/eval\(/)
 
@@ -34,8 +34,6 @@ def self.extract_quoted_strings(string)
         skip_block = false if stripped.start_with?('=end')
 
         next if skip_block
-
-        buffer.push('\#') if in_quotes
 
         line.each_char do |char|
             if %w[' "].include?(char)
@@ -51,7 +49,16 @@ def self.extract_quoted_strings(string)
                 next
             end
 
-            buffer.push(char) if in_quotes
+            if in_quotes
+                if char == "\r"
+                    next
+                elsif char == "\n"
+                    buffer.push('\#')
+                    next
+                end
+
+                buffer.push(char)
+            end
         end
     end
 
