@@ -147,9 +147,8 @@ def self.read_map(maps_files_paths, output_path, logging, game_type, processing_
 
     # 401 - dialogue lines
     # 102 - dialogue choices array
-    # 402 - one of the dialogue choices from the array
     # 356 - system lines/special texts (do they even exist before mv?)
-    allowed_codes = [401, 102, 402, 356].freeze
+    allowed_codes = [401, 102, 356].freeze
 
     maps_object_map.each do |filename, object|
         display_name = object.display_name
@@ -276,9 +275,8 @@ def self.read_other(other_files_paths, output_path, logging, game_type, processi
     # 401 - dialogue lines
     # 405 - credits lines
     # 102 - dialogue choices array
-    # 402 - one of the dialogue choices from the array
     # 356 - system lines/special texts (do they even exist before mv?)
-    allowed_codes = [401, 405, 102, 402, 356].freeze
+    allowed_codes = [401, 405, 102, 356].freeze
 
     other_object_array_map.each do |filename, other_object_array|
         processed_filename = File.basename(filename, '.*').downcase
@@ -310,7 +308,7 @@ def self.read_other(other_files_paths, output_path, logging, game_type, processi
                 next if object.nil?
 
                 name = object.name
-                nickname = object.nickname
+                nickname = object.nickname if object.is_a?(RPG::Actor)
                 description = object.description
                 note = object.note
 

@@ -300,7 +300,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                 next if object.nil?
 
                 name = object.name
-                nickname = object.nickname
+                nickname = object.nickname if object.is_a?(RPG::Actor)
                 description = object.description
                 note = object.note
 
@@ -317,7 +317,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                         if i.zero?
                             object.name = translated
                         elsif i == 1
-                            object.nickname = translated
+                            object.nickname = translated if object.is_a?(RPG::Actor)
                         elsif i == 2
                             object.description = translated
                         else
