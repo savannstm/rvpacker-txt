@@ -134,31 +134,31 @@ module RPG
     end
 
     class Armor
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class Class
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class Enemy
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class Item
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class Skill
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class State
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class Weapon
-        attr_accessor :name, :nickname, :description, :note
+        attr_accessor :name, :description, :note
     end
 
     class CommonEvent

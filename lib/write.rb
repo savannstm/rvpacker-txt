@@ -5,7 +5,6 @@ require 'zlib'
 # @param [String] string A parsed scripts code string, containing raw Ruby code
 # @return [[Array<String>, Array<Integer>]] Hash of parsed from code strings and their start indices
 def self.extract_quoted_strings(string)
-    # Hash of string-index key-value pairs
     strings_array = []
     indices_array = []
 
@@ -140,7 +139,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
         line.gsub('\#', "\n").strip
     end.freeze
 
-    maps_translated_text = File.readlines(File.join(maps_path, 'maps.txt'), encoding: 'UTF-8', chomp: true).map do |line|
+    maps_translated_text = File.readlines(File.join(maps_path, 'maps_trans.txt'), encoding: 'UTF-8', chomp: true).map do |line|
         line.gsub('\#', "\n").strip
     end
 
@@ -175,11 +174,11 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
         events = object.events
         next if events.nil?
 
-        events.each_value do |event|
+        events.each do |ev, event|
             pages = event.pages
             next if pages.nil?
 
-            pages.each do |page|
+            pages.each_with_index do |page, pg|
                 list = page.list
                 next if list.nil?
 
@@ -244,13 +243,21 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                     end
 
                     item.parameters = parameters
+                    list[it] = item
                 end
+
+                page.list = list
+                pages[pg] = page
             end
+
+            event.pages = pages
+            events[ev] = event
         end
 
-        puts "Written #{filename}" if logging
+        object.events = events
 
         File.binwrite(File.join(output_path, filename), Marshal.dump(object))
+        puts "Written #{filename}" if logging
     end
 end
 
@@ -320,7 +327,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                 end
             end
         else
-            other_object_array.each do |object|
+            other_object_array.each_with_index do |object, obj|
                 next if object.nil?
 
                 pages = object.pages
@@ -391,14 +398,23 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                         end
 
                         item.parameters = parameters
+                        list[it] = item
+                    end
+
+                    if pages.nil?
+                        object.list = list
+                    else
+                        pages[pg].instance_variable_set(:@list, list)
+                        object.pages = pages
                     end
                 end
+
+                other_object_array[obj] = object
             end
         end
 
-        puts "Written #{filename}" if logging
-
         File.binwrite(File.join(output_path, filename), Marshal.dump(other_object_array))
+        puts "Written #{filename}" if logging
     end
 end
 
@@ -445,15 +461,15 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
     currency_unit = system_object.currency_unit
     terms = system_object.terms || system_object.words
 
-    [elements, skill_types, weapon_types, armor_types].each_with_index.each do |array, i|
+    [elements, skill_types, weapon_types, armor_types].each_with_index do |array, i|
         next unless array.is_a?(Array)
 
-        array.map! do |string|
-            stripped = string.strip
-            return string if stripped.empty?
+        array.each_with_index do |string, i|
+            string = string.strip
+            next if string.empty?
 
-            translated = system_translation_map[stripped]
-            !translated.nil? && !translated.empty? ? translated : stripped
+            translated = system_translation_map[string]
+            array[i] = translated unless translated.nil? || translated.empty?
         end
 
         if i.zero?
@@ -479,14 +495,14 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
             next if value.empty?
 
             translated = system_translation_map[stripped]
-            value = !translated.nil? && !translated.empty? ? translated : value
+            value = translated unless translated.nil? || translated.empty?
         elsif value.is_a?(Array)
-            value.map! do |string|
-                stripped = string.strip
-                return string if stripped.empty?
+            value.each_with_index do |string, i|
+                string = string.strip
+                next if string.empty?
 
-                translated = system_translation_map[stripped]
-                value = !translated.nil? && !translated.empty? ? translated : value
+                translated = system_translation_map[string]
+                value[i] = translated unless translated.nil? || translated.empty?
             end
         end
 
@@ -498,8 +514,11 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
         system_object.terms = terms
 
     game_title_translated = system_translated_text[-1]
-    system_object.game_title = game_title_translated
-    write_ini_title(ini_file_path, game_title_translated)
+
+    unless game_title_translated.nil? || game_title_translated.empty?
+        system_object.game_title = game_title_translated
+        write_ini_title(ini_file_path, game_title_translated)
+    end
 
     puts "Written #{system_basename}" if logging
 
@@ -558,8 +577,7 @@ def self.write_scripts(scripts_file_path, other_path, output_path, logging)
         script[2] = Zlib::Deflate.deflate(code, Zlib::BEST_COMPRESSION)
     end
 
-    puts "Written #{scripts_basename}" if logging
-
     # File.binwrite(File.join(output_path, 'scripts_plain.txt'), codes.join("\n")) - debug line
     File.binwrite(File.join(output_path, scripts_basename), Marshal.dump(script_entries))
+    puts "Written #{scripts_basename}" if logging
 end

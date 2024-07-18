@@ -13,7 +13,7 @@ class Hash
 end
 
 # @param [String] string A parsed scripts code string, containing raw Ruby code
-# @return [IndexSet<String>] Hash of parsed from code strings and their start indices
+# @return [IndexSet<String>] Set of extracted strings
 def self.extract_quoted_strings(string)
     result = IndexSet.new
 
