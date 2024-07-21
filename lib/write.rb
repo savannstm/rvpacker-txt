@@ -3,7 +3,7 @@
 require 'zlib'
 
 # @param [String] string A parsed scripts code string, containing raw Ruby code
-# @return [[Array<String>, Array<Integer>]] Hash of parsed from code strings and their start indices
+# @return [Array<Array<String, Integer>>] Hash of parsed from code strings and their start indices
 def self.extract_quoted_strings(string)
     strings_array = []
     indices_array = []
@@ -129,9 +129,7 @@ end
 # @param [Boolean] logging
 # @param [String] game_type
 def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, logging, game_type)
-    maps_object_map = Hash[original_files_paths.map do |filename|
-        [File.basename(filename), Marshal.load(File.binread(filename))]
-    end]
+    maps_object_map = Hash[original_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
     maps_original_text = File.readlines(File.join(maps_path, 'maps.txt'), encoding: 'UTF-8', chomp: true).map do |line|
         line.gsub('\#', "\n").strip
@@ -270,9 +268,7 @@ end
 # @param [Boolean] logging
 # @param [String] game_type
 def self.write_other(original_files_paths, other_path, output_path, shuffle_level, logging, game_type)
-    other_object_array_map = Hash[original_files_paths.map do |filename|
-        [File.basename(filename), Marshal.load(File.binread(filename))]
-    end]
+    other_object_array_map = Hash[original_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
     # 401 - dialogue lines
     # 405 - credits lines
@@ -424,9 +420,7 @@ end
 # @param [String] translated
 def self.write_ini_title(ini_file_path, translated)
     file_lines = File.readlines(ini_file_path, chomp: true)
-    title_line_index = file_lines.each_with_index do |line, i|
-        break i if line.downcase.start_with?('title')
-    end
+    title_line_index = file_lines.each_with_index { |line, i| break i if line.downcase.start_with?('title') }
 
     file_lines[title_line_index] = translated
     File.binwrite(ini_file_path, file_lines.join("\n"))
@@ -522,9 +516,8 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
         write_ini_title(ini_file_path, game_title_translated)
     end
 
-    puts "Written #{system_basename}" if logging
-
     File.binwrite(File.join(output_path, system_basename), Marshal.dump(system_object))
+    puts "Written #{system_basename}" if logging
 end
 
 # @param [String] scripts_file_path Path to Scripts.*data file

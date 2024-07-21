@@ -24,12 +24,12 @@ def self.parse_options
         cmd.on('--disable-processing FILES', Array, "Don't process specified files (maps, other, system, scripts)") do |files|
             files.each do |file|
                 files = %w[maps other system scripts]
-                index = files.index(file)
+                index = files.find_index(file)
                 options[:disable_processing][files[index]] = true if index
             end
         end
 
-        cmd.on('-s', '--shuffle NUM', Integer, 'Shuffle level (1: lines, 2: lines and words)') do |num|
+        cmd.on('-s', '--shuffle NUM', Integer, 'Shuffle level when writing (1: lines, 2: lines and words)') do |num|
             options[:shuffle_level] = num
         end
 
@@ -45,9 +45,10 @@ def self.parse_options
             options[:force] = true
         end
 
-        cmd.on('-a', '--append', 'When you update the rvpacker-txt, you probably should re-read',
-               'your files with append, as some new text might be added to parser', 'Cannot be used with --force') do
-            raise '--append cannot be used beside --force.' if options[:force]
+        cmd.on('-a', '--append', "When the rvpacker-txt or the game which files you've parsed receives an update,",
+               'you probably should re-read game files with --append, which will append any new text to your files without overwriting the progress',
+               'Cannot be used with --force') do
+            raise '--append cannot be used with --force.' if options[:force]
             options[:append] = true
         end
 
@@ -95,9 +96,8 @@ other_path = File.join(input_dir, 'translation', 'other')
 FileUtils.mkdir_p(maps_path)
 FileUtils.mkdir_p(other_path)
 
-engine = extensions.each do |symbol, extension|
-    break symbol if File.exist?(File.join(original_directory, "System.#{extension}"))
-end || (raise "Couldn't determine project engine.")
+engine = extensions.each { |sym, ext| break sym if File.exist?(File.join(original_directory, "System.#{ext}")) } ||
+    (raise "Couldn't determine project engine.")
 
 files = Dir.glob("#{original_directory}/*#{extensions[engine]}")
 
@@ -129,7 +129,9 @@ wait_time = 0
 processing_type = if force
                       wait_time_start = Time.now
 
-                      puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.\nIf you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.\nInput 'Y' to continue."
+                      puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
+                           "If you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.",
+                           "Input 'Y' to continue."
                       exit unless gets.chomp == 'Y'
 
                       wait_time = Time.now - wait_time_start

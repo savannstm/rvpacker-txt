@@ -98,6 +98,7 @@ end
 # @return [String]
 def self.parse_variable(variable, _game_type)
     variable = variable.gsub(/\r?\n/, '\#') if variable.count("\n").positive?
+
     return nil if variable.split('\#').all? { |line| line.strip.match?(/(^#? ?<.*>\.?$)|^$/) }
     return nil if variable.match?(/^[+-]?[0-9]*$/) ||
         variable.match?(/---/) ||
@@ -122,9 +123,7 @@ def self.read_map(maps_files_paths, output_path, logging, game_type, processing_
         return
     end
 
-    maps_object_map = Hash[maps_files_paths.map do |filename|
-        [File.basename(filename), Marshal.load(File.binread(filename))]
-    end]
+    maps_object_map = Hash[maps_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
     maps_lines = IndexSet.new
     names_lines = IndexSet.new
@@ -266,9 +265,7 @@ end
 # @param [String] game_type
 # @param [String] processing_type
 def self.read_other(other_files_paths, output_path, logging, game_type, processing_type)
-    other_object_array_map = Hash[other_files_paths.map do |filename|
-        [File.basename(filename), Marshal.load(File.binread(filename))]
-    end]
+    other_object_array_map = Hash[other_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
     inner_processing_type = processing_type
     # 401 - dialogue lines
@@ -510,20 +507,18 @@ def self.read_system(system_file_path, ini_file_path, output_path, logging, proc
 
                 system_lines.add(value)
             end
+        elsif value.is_a?(Array)
+            value.each do |string|
+                next unless string.is_a?(String)
 
-            next
-        end
+                string = string.strip
+                next if string.empty?
 
-        value.each do |string|
-            next unless string.is_a?(String)
+                system_translation_map.insert_at_index(system_lines.length, string, '') if processing_type == :append &&
+                    !system_translation_map.include?(string)
 
-            string = string.strip
-            next if string.empty?
-
-            system_translation_map.insert_at_index(system_lines.length, string, '') if processing_type == :append &&
-                !system_translation_map.include?(string)
-
-            system_lines.add(string)
+                system_lines.add(string)
+            end
         end
     end
 
