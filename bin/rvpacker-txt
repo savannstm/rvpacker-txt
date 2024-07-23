@@ -9,19 +9,28 @@ require 'classes'
 def self.parse_options
     options = { disable_processing: {}, input_dir: './', output_dir: './', shuffle_level: 0 }
 
-    OptionParser.new do |cmd|
-        cmd.banner = "This tool allows to parse RPG Maker project to .txt files and back.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - Parses RPG Maker game files to .txt\n    write - Writes parsed files back to their initial form\nOPTIONS:\n"
+    read_command_description = 'Parses files from "original" or "data" folders of input directory to "translation" folder of output directory.'
+    write_command_description = 'Writes translated files using original files from "original" or "data" folder of input directory and writes results to "output" folder of output directory.'
+    banner_text = "This tool allows to parse RPG Maker games to .txt files and write them back to their initial form.\n\nUsage: rvpacker-txt COMMAND [options]\n\nCOMMANDS:\n    read - #{read_command_description}\n    write - #{write_command_description}\nOPTIONS:\n"
 
-        cmd.on('-i', '--input-dir DIR', String, 'Input directory of RPG Maker project') do |dir|
+    OptionParser.new(banner_text) do |cmd|
+        cmd.on('-i', '--input-dir PATH', String,
+               'When reading: Input directory, containing folders "original" or "data" with original game files.',
+               'When writing: Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.') do |dir|
             options[:input_dir] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
             options[:output_dir] = options[:input_dir]
         end
 
-        cmd.on('-o', '--output-dir DIR', String, 'Output directory of parsed/written files') do |dir|
+        cmd.on('-o', '--output-dir PATH', String,
+               'When reading: Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.',
+               'When writing: Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.') do |dir|
             options[:output_dir] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
         end
 
-        cmd.on('--disable-processing FILES', Array, "Don't process specified files (maps, other, system, scripts)") do |files|
+        cmd.on('--disable-processing FILES', Array,
+               'Skips processing the specified files.',
+               'Example: --disable-processing=maps,other,system.',
+               '[Allowed values: maps, other, system, scripts]') do |files|
             files.each do |file|
                 files = %w[maps other system scripts]
                 index = files.find_index(file)
@@ -29,25 +38,36 @@ def self.parse_options
             end
         end
 
-        cmd.on('-s', '--shuffle NUM', Integer, 'Shuffle level when writing (1: lines, 2: lines and words)') do |num|
+        cmd.on('-s', '--shuffle-level NUMBER', Integer,
+               'With value 1, shuffles all translation lines. With value 2, shuffles all words and lines in translation text.',
+               'Example: --shuffle-level 1.',
+               '[Allowed values: 0, 1, 2]',
+               '[Default value: 0]',
+               '[Write flag]') do |num|
+            raise 'Allowed values: 0, 1, 2' if num > 2
             options[:shuffle_level] = num
         end
 
-        cmd.on('--disable-custom-processing', 'Disables built-in custom parsing/writing for some games') do
+        cmd.on('--disable-custom-processing', 'Disables built-in custom parsing/writing for some games.') do
             options[:disable_custom_processing] = true
         end
 
-        cmd.on('-l', '--log', 'Log information while processing') do
+        cmd.on('-l', '--log', 'Enables logging.') do
             options[:logging] = true
         end
 
-        cmd.on('-f', '--force', 'Force rewrite all files. Cannot be used with --append', 'USE WITH CAUTION!') do
+        cmd.on('-f', '--force',
+               'Force rewrite all files. Cannot be used with --append.',
+               'USE WITH CAUTION!',
+               '[Read flag]') do
             options[:force] = true
         end
 
-        cmd.on('-a', '--append', "When the rvpacker-txt or the game which files you've parsed receives an update,",
+        cmd.on('-a', '--append',
+               "When the rvpacker-txt or the game which files you've parsed receives an update,",
                'you probably should re-read game files with --append, which will append any new text to your files without overwriting the progress',
-               'Cannot be used with --force') do
+               'Cannot be used with --force',
+               '[Read flag]') do
             raise '--append cannot be used with --force.' if options[:force]
             options[:append] = true
         end

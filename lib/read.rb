@@ -70,6 +70,8 @@ end
 # @param [String] game_type
 # @return [String]
 def self.parse_parameter(code, parameter, game_type)
+    return nil if parameter.match?(/^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/)
+
     unless game_type.nil?
         case code
             when 401, 405
@@ -97,6 +99,7 @@ end
 # @param [String] _game_type
 # @return [String]
 def self.parse_variable(variable, _game_type)
+    return nil if parameter.match?(/^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/)
     variable = variable.gsub(/\r?\n/, '\#') if variable.count("\n").positive?
 
     return nil if variable.split('\#').all? { |line| line.strip.match?(/(^#? ?<.*>\.?$)|^$/) }
@@ -618,7 +621,7 @@ def self.read_scripts(scripts_file_path, output_path, logging, processing_type)
                 string.match?(/^(?=.*\d)[A-Za-z0-9\-]+$/) ||
                 string.match?(/^[a-z\-()\/ +'&]*$/) ||
                 string.match?(/^[A-Za-z]+[+-]$/) ||
-                string.match?(/^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼|]$/) ||
+                string.match?(/^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/) ||
                 string.match?(/^Tile.*[A-Z]$/) ||
                 string.match?(/^[a-zA-Z][a-z]+([A-Z][a-z]*)+$/) ||
                 string.match?(/^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/) ||
