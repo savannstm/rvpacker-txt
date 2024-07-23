@@ -21,26 +21,36 @@ You can get a help message on usage using `rvpacker-txt -h`.
 
 ```
 $ rvpacker-txt -h
-This tool allows to parse RPG Maker project to .txt files and back.
+This tool allows to parse RPG Maker games to .txt files and write them back to their initial form.
 
 Usage: rvpacker-txt COMMAND [options]
 
 COMMANDS:
-    read - Parses RPG Maker game files to .txt
-    write - Writes parsed files back to their initial form
+    read - Parses files from "original" or "data" folders of input directory to "translation" folder of output directory.
+    write - Writes translated files using original files from "original" or "data" folder of input directory and writes results to "output" folder of output directory.
 OPTIONS:
-    -i, --input-dir DIR              Input directory of RPG Maker project
-    -o, --output-dir DIR             Output directory of parsed/written files
-        --disable-processing FILES   Don't process specified files (maps, other, system, scripts)
-    -s, --shuffle NUM                Shuffle level (1: lines, 2: lines and words)
-        --disable-custom-processing  Disables built-in custom parsing/writing for some games
-    -l, --log                        Log information while processing
-    -f, --force                      Force rewrite all files. Cannot be used with --append
+    -i, --input-dir PATH             When reading: Input directory, containing folders "original" or "data" with original game files.
+                                     When writing: Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.
+    -o, --output-dir PATH            When reading: Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.
+                                     When writing: Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.
+        --disable-processing FILES   Skips processing the specified files.
+                                     Example: --disable-processing=maps,other,system.
+                                     [Allowed values: maps, other, system, scripts]
+    -s, --shuffle-level NUMBER       With value 1, shuffles all translation lines. With value 2, shuffles all words and lines in translation text.
+                                     Example: --shuffle-level 1.
+                                     [Allowed values: 0, 1, 2]
+                                     [Default value: 0]
+                                     [Write flag]
+        --disable-custom-processing  Disables built-in custom parsing/writing for some games.
+    -l, --log                        Enables logging.
+    -f, --force                      Force rewrite all files. Cannot be used with --append.
                                      USE WITH CAUTION!
-    -a, --append                     When you update the rvpacker-txt, you probably should re-read
-                                     your files with append, as some new text might be added to parser
-                                     Cannot be used with --force
-    -h, --help                       Show help message
+                                     [Read flag]
+    -a, --append                     When the rvpacker-txt or the game which files you've parsed receives an update,
+                                     you probably should re-read game files with --append, which will append any new text to your files without overwriting the progress.
+                                     Cannot be used with --force.
+                                     [Read flag]
+    -h, --help                       Show help message.
 ```
 
 For example, to read a RPG Maker VX Ace project in E:/Documents/RPGMakerGame to .txt files:
