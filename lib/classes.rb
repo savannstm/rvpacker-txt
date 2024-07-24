@@ -83,7 +83,7 @@ class IndexSet
 
     def add(item)
         return if @hash.include?(item)
-        @hash[item] = hash.size
+        @hash[item] = @hash.size
         @hash
     end
 

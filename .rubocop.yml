@@ -1,0 +1,22 @@
+Layout/EndOfLine:
+  EnforcedStyle: lf
+Layout/IndentationWidth:
+  Width: 4
+Style/RegexpLiteral:
+  Enabled: False
+Style/Documentation:
+  Enabled: False
+Style/GlobalVars:
+  Enabled: False
+Metrics:
+  Enabled: False
+Layout/CaseIndentation:
+  Enabled: False
+Style/EmptyElse:
+  Enabled: False
+Layout/MultilineOperationIndentation:
+  Enabled: False
+Layout/EmptyLineAfterGuardClause:
+  Enabled: False
+Security/MarshalLoad:
+  Enabled: False

@@ -23,7 +23,7 @@ You can get a help message on usage using `rvpacker-txt -h`.
 $ rvpacker-txt -h
 This tool allows to parse RPG Maker games to .txt files and write them back to their initial form.
 
-Usage: rvpacker-txt COMMAND [options]
+Usage: rvpacker-txt COMMAND [OPTIONS]
 
 COMMANDS:
     read - Parses files from "original" or "data" folders of input directory to "translation" folder of output directory.
@@ -33,24 +33,15 @@ OPTIONS:
                                      When writing: Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.
     -o, --output-dir PATH            When reading: Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.
                                      When writing: Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.
-        --disable-processing FILES   Skips processing the specified files.
+        --disable-processing FILES   Skips processing specified files.
                                      Example: --disable-processing=maps,other,system.
                                      [Allowed values: maps, other, system, scripts]
-    -s, --shuffle-level NUMBER       With value 1, shuffles all translation lines. With value 2, shuffles all words and lines in translation text.
-                                     Example: --shuffle-level 1.
-                                     [Allowed values: 0, 1, 2]
-                                     [Default value: 0]
-                                     [Write flag]
         --disable-custom-processing  Disables built-in custom parsing/writing for some games.
+    -r, --romanize                   When reading: If you parsing text from a Japanese game, that contains symbols like 「」,
+                                     which are just the Japanese quotation marks, it automatically replaces these symbols by their roman equivalents.
+                                     When writing: Use to correctly write files back if you have parsed them with --romanize flag.
     -l, --log                        Enables logging.
-    -f, --force                      Force rewrite all files. Cannot be used with --append.
-                                     USE WITH CAUTION!
-                                     [Read flag]
-    -a, --append                     When the rvpacker-txt or the game which files you've parsed receives an update,
-                                     you probably should re-read game files with --append, which will append any new text to your files without overwriting the progress.
-                                     Cannot be used with --force.
-                                     [Read flag]
-    -h, --help                       Show help message.
+    -h, --help                       Prints the program's help message or for the entered subcommand.
 ```
 
 For example, to read a RPG Maker VX Ace project in E:/Documents/RPGMakerGame to .txt files:
