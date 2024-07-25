@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
 
     spec.metadata = { 'homepage_uri' => 'https://github.com/savannstm/rvpacker-txt' }
 
-    spec.files = %w[bin/rvpacker-txt lib/classes.rb lib/read.rb lib/write.rb Gemfile LICENSE README.md rvpacker-txt.gemspec]
+    spec.files = %w[bin/rvpacker-txt lib/classes.rb lib/read.rb lib/write.rb lib/extensions.rb Gemfile LICENSE README.md rvpacker-txt.gemspec]
     spec.executables = ['rvpacker-txt']
     spec.require_paths = ['lib']
 end

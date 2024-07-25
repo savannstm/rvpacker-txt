@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require_relative 'extensions'
 require 'zlib'
+require_relative 'extensions'
 
 STRING_IS_ONLY_SYMBOLS_RE = /^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/
 APPEND_FLAG_OMIT_MSG = "Files aren't already parsed. Continuing as if --append flag was omitted."
