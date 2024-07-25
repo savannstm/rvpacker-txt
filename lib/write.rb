@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require 'zlib'
-require 'extensions'
+require_relative 'extensions'
 
 # @param [String] string A parsed scripts code string, containing raw Ruby code
 # @return [Array<Array<String, Integer>>] Hash of parsed from code strings and their start indices

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'extensions'
+require_relative 'extensions'
 require 'zlib'
 
 STRING_IS_ONLY_SYMBOLS_RE = /^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/
