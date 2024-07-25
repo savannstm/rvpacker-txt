@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'extensions'
 require 'zlib'
 
 STRING_IS_ONLY_SYMBOLS_RE = /^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/
@@ -13,51 +14,6 @@ class Hash
         temp_array.insert(index, [key, value])
         replace(temp_array.to_h)
     end
-end
-
-# @param [String] string
-# @return [String]
-def self.romanize_string(string)
-    string.each_char.each_with_index do |char, i|
-        case char
-            when '。'
-                string[i] = '.'
-            when '、'
-                string[i] = ','
-            when '・'
-                string[i] = '·'
-            when '゠'
-                string[i] = '–'
-            when '＝'
-                string[i] = '—'
-            when '…'
-                string[i, 3] = '...'
-            when '「', '」', '〈', '〉'
-                string[i] = "'"
-            when '『', '』', '《', '》'
-                string[i] = '"'
-            when '（', '〔', '｟', '〘'
-                string[i] = '('
-            when '）', '〕', '｠', '〙'
-                string[i] = ')'
-            when '｛'
-                string[i] = '{'
-            when '｝'
-                string[i] = '}'
-            when '［', '【', '〖', '〚'
-                string[i] = '['
-            when '］', '】', '〗', '〛'
-                string[i] = ']'
-            when '〜'
-                string[i] = '~'
-            when '？'
-                string[i] = '?'
-            else
-                nil
-        end
-    end
-
-    string
 end
 
 # @param [String] string A parsed scripts code string, containing raw Ruby code
@@ -158,19 +114,19 @@ def self.parse_variable(variable, _game_type)
     variable
 end
 
-# @param [Array<String>] maps_files_paths
-# @param [String] output_path
-# @param [Boolean] romanize
-# @param [Boolean] logging
-# @param [String] game_type
-# @param [String] processing_type
-def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, processing_type)
+# @param [Array<String>] maps_files_paths Array of paths to original maps files
+# @param [String] output_path Path to output directory
+# @param [Boolean] romanize Whether to romanize text
+# @param [Boolean] logging Whether to log
+# @param [String] game_type Game type for custom processing
+# @param [String] processing_mode Whether to read in default mode, force rewrite or append new text to existing files
+def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, processing_mode)
     maps_output_path = File.join(output_path, 'maps.txt')
     names_output_path = File.join(output_path, 'names.txt')
     maps_trans_output_path = File.join(output_path, 'maps_trans.txt')
     names_trans_output_path = File.join(output_path, 'names_trans.txt')
 
-    if processing_type == :default && (File.exist?(maps_trans_output_path) || File.exist?(names_trans_output_path))
+    if processing_mode == :default && (File.exist?(maps_trans_output_path) || File.exist?(names_trans_output_path))
         puts 'maps_trans.txt or names_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
         return
     end
@@ -183,7 +139,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
     maps_translation_map = nil
     names_translation_map = nil
 
-    if processing_type == :append
+    if processing_mode == :append
         if File.exist?(maps_trans_output_path)
             maps_translation_map = Hash[File.readlines(maps_output_path, chomp: true)
                                             .zip(File.readlines(maps_trans_output_path, chomp: true))]
@@ -191,7 +147,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                                              .zip(File.readlines(names_trans_output_path, chomp: true))]
         else
             puts APPEND_FLAG_OMIT_MSG
-            processing_type = :default
+            processing_mode = :default
         end
     end
 
@@ -209,7 +165,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
             unless display_name.empty?
                 display_name = romanize_string(display_name) if romanize
 
-                names_translation_map.insert_at_index(names_lines.length, display_name, '') if processing_type == :append &&
+                names_translation_map.insert_at_index(names_lines.length, display_name, '') if processing_mode == :append &&
                     !names_translation_map.include?(display_name)
 
                 names_lines.add(display_name)
@@ -241,7 +197,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                             unless parsed.nil?
                                 parsed = romanize_string(parsed) if romanize
 
-                                maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_type == :append &&
+                                maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_mode == :append &&
                                     !maps_translation_map.include?(parsed)
 
                                 maps_lines.add(parsed)
@@ -272,7 +228,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
 
                             parsed = romanize_string(parsed) if romanize
 
-                            maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_type == :append &&
+                            maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_mode == :append &&
                                 !maps_translation_map.include?(parsed)
 
                             maps_lines.add(parsed)
@@ -287,7 +243,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                         parsed = parsed.gsub(/\r?\n/, '\#')
                         parsed = romanize_string(parsed) if romanize
 
-                        maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_type == :append &&
+                        maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_mode == :append &&
                             !maps_translation_map.include?(parsed)
 
                         maps_lines.add(parsed)
@@ -302,7 +258,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
     maps_original_content,
         maps_translated_content,
         names_original_content,
-        names_translated_content = if processing_type == :append
+        names_translated_content = if processing_mode == :append
                                        [maps_translation_map.keys.join("\n"),
                                         maps_translation_map.values.join("\n"),
                                         names_translation_map.keys.join("\n"),
@@ -322,14 +278,14 @@ end
 
 # @param [Array<String>] other_files_paths
 # @param [String] output_path
-# @param [Boolean] romanize
-# @param [Boolean] logging
-# @param [String] game_type
-# @param [String] processing_type
-def self.read_other(other_files_paths, output_path, romanize, logging, game_type, processing_type)
+# @param [Boolean] romanize Whether to romanize text
+# @param [Boolean] logging Whether to log
+# @param [String] game_type Game type for custom processing
+# @param [String] processing_mode Whether to read in default mode, force rewrite or append new text to existing files
+def self.read_other(other_files_paths, output_path, romanize, logging, game_type, processing_mode)
     other_object_array_map = Hash[other_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
-    inner_processing_type = processing_type
+    inner_processing_type = processing_mode
     # 401 - dialogue lines
     # 405 - credits lines
     # 102 - dialogue choices array
@@ -342,7 +298,7 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
         other_output_path = File.join(output_path, "#{processed_filename}.txt")
         other_trans_output_path = File.join(output_path, "#{processed_filename}_trans.txt")
 
-        if processing_type == :default && File.exist?(other_trans_output_path)
+        if processing_mode == :default && File.exist?(other_trans_output_path)
             puts "#{processed_filename}_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files."
             next
         end
@@ -350,7 +306,7 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
         other_lines = IndexSet.new
         other_translation_map = nil
 
-        if processing_type == :append
+        if processing_mode == :append
             if File.exist?(other_trans_output_path)
                 inner_processing_type == :append
                 other_translation_map = Hash[File.readlines(other_output_path, chomp: true)
@@ -476,7 +432,7 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
 
         puts "Parsed #{filename}" if logging
 
-        original_content, translated_content = if processing_type == :append
+        original_content, translated_content = if processing_mode == :append
                                                    [other_translation_map.keys.join("\n"),
                                                     other_translation_map.values.join("\n")]
                                                else
@@ -503,17 +459,17 @@ end
 # @param [String] system_file_path
 # @param [String] ini_file_path
 # @param [String] output_path
-# @param [Boolean] romanize
-# @param [Boolean] logging
-# @param [String] processing_type
-def self.read_system(system_file_path, ini_file_path, output_path, romanize, logging, processing_type)
+# @param [Boolean] romanize Whether to romanize text
+# @param [Boolean] logging Whether to log
+# @param [String] processing_mode Whether to read in default mode, force rewrite or append new text to existing files
+def self.read_system(system_file_path, ini_file_path, output_path, romanize, logging, processing_mode)
     system_filename = File.basename(system_file_path)
     system_basename = File.basename(system_file_path, '.*').downcase
 
     system_output_path = File.join(output_path, "#{system_basename}.txt")
     system_trans_output_path = File.join(output_path, "#{system_basename}_trans.txt")
 
-    if processing_type == :default && File.exist?(system_trans_output_path)
+    if processing_mode == :default && File.exist?(system_trans_output_path)
         puts 'system_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
         return
     end
@@ -523,13 +479,13 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
     system_lines = IndexSet.new
     system_translation_map = nil
 
-    if processing_type == :append
+    if processing_mode == :append
         if File.exist?(system_trans_output_path)
             system_translation_map = Hash[File.readlines(system_output_path, chomp: true)
                                               .zip(File.readlines(system_trans_output_path, chomp: true))]
         else
             puts APPEND_FLAG_OMIT_MSG
-            processing_type = :default
+            processing_mode = :default
         end
     end
 
@@ -551,7 +507,7 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
 
             string = romanize_string(string) if romanize
 
-            system_translation_map.insert_at_index(system_lines.length, string, '') if processing_type == :append &&
+            system_translation_map.insert_at_index(system_lines.length, string, '') if processing_mode == :append &&
                 !system_translation_map.include?(string)
 
             system_lines.add(string)
@@ -564,7 +520,7 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
         unless currency_unit.empty?
             currency_unit = romanize_string(currency_unit) if romanize
 
-            system_translation_map.insert_at_index(system_lines.length, currency_unit, '') if processing_type == :append &&
+            system_translation_map.insert_at_index(system_lines.length, currency_unit, '') if processing_mode == :append &&
                 !system_translation_map.include?(currency_unit)
 
             system_lines.add(currency_unit)
@@ -580,7 +536,7 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
             unless value.empty?
                 value = romanize_string(string) if romanize
 
-                system_translation_map.insert_at_index(system_lines.length, value, '') if processing_type == :append &&
+                system_translation_map.insert_at_index(system_lines.length, value, '') if processing_mode == :append &&
                     !system_translation_map.include?(value)
 
                 system_lines.add(value)
@@ -594,7 +550,7 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
 
                 string = romanize_string(string) if romanize
 
-                system_translation_map.insert_at_index(system_lines.length, string, '') if processing_type == :append &&
+                system_translation_map.insert_at_index(system_lines.length, string, '') if processing_mode == :append &&
                     !system_translation_map.include?(string)
 
                 system_lines.add(string)
@@ -607,14 +563,14 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
     ini_game_title = read_ini_title(ini_file_path).strip
     ini_game_title = romanize_string(ini_game_title) if romanize
 
-    system_translation_map.insert_at_index(system_lines.length, ini_game_title, '') if processing_type == :append &&
+    system_translation_map.insert_at_index(system_lines.length, ini_game_title, '') if processing_mode == :append &&
         !system_translation_map.include?(ini_game_title)
 
     system_lines.add(ini_game_title)
 
     puts "Parsed #{system_filename}" if logging
 
-    original_content, translated_content = if processing_type == :append
+    original_content, translated_content = if processing_mode == :append
                                                [system_translation_map.keys.join("\n"),
                                                 system_translation_map.values.join("\n")]
                                            else
@@ -628,10 +584,10 @@ end
 
 # @param [String] scripts_file_path
 # @param [String] output_path
-# @param [Boolean] romanize
-# @param [Boolean] logging
-# @param [String] processing_type
-def self.read_scripts(scripts_file_path, output_path, romanize, logging, processing_type)
+# @param [Boolean] romanize Whether to romanize text
+# @param [Boolean] logging Whether to log
+# @param [String] processing_mode Whether to read in default mode, force rewrite or append new text to existing files
+def self.read_scripts(scripts_file_path, output_path, romanize, logging, processing_mode)
     scripts_filename = File.basename(scripts_file_path)
     scripts_basename = File.basename(scripts_file_path, '.*').downcase
 
@@ -639,7 +595,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
     scripts_output_path = File.join(output_path, "#{scripts_basename}.txt")
     scripts_trans_output_path = File.join(output_path, "#{scripts_basename}_trans.txt")
 
-    if processing_type == :default && File.exist?(scripts_trans_output_path)
+    if processing_mode == :default && File.exist?(scripts_trans_output_path)
         puts 'scripts_trans.txt file already exists. If you want to forcefully re-read all files, use --force flag, or --append if you want append new text to already existing files.'
         return
     end
@@ -649,13 +605,13 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
     scripts_lines = IndexSet.new
     scripts_translation_map = nil
 
-    if processing_type == :append
+    if processing_mode == :append
         if File.exist?(scripts_trans_output_path)
             scripts_translation_map = Hash[File.readlines(scripts_output_path, chomp: true)
                                                .zip(File.readlines(scripts_trans_output_path, chomp: true))]
         else
             puts APPEND_FLAG_OMIT_MSG
-            processing_type = :default
+            processing_mode = :default
         end
     end
 
@@ -692,7 +648,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
                 string.match?(/^[^\p{L}]+$/) ||
                 string.match?(/^\d+$/) ||
                 string.match?(/%.*(\d|\+|\*)d\]?:?$/) ||
-                string.match?(/^\[(ON|OFF)\]$/) ||
+                string.match?(/^\[((ON|OFF)|P[EMRT])\]$/) ||
                 string.match?(/^\[\]$/) ||
                 string.match?(/^(.)\1{2,}$/) ||
                 string.match?(/^(false|true)$/) ||
@@ -704,6 +660,9 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
                 string.match?(/^Tile.*[A-Z]$/) ||
                 string.match?(/^[a-zA-Z][a-z]+([A-Z][a-z]*)+$/) ||
                 string.match?(/^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/) ||
+                string.match?(/^(?=.*%d)(?=.*%m)(?=.*%Y).*$/) ||
+                string.match?(/^\\\\ALPHAC/) ||
+                string.match?(/^[A-Z]{,3}-[A-Z][A-Za-z]+/) ||
                 string.match?(/\.(mp3|ogg|jpg|png|ini|txt)$/i) ||
                 string.match?(/\/(\d.*)?$/) ||
                 string.match?(/FILE$/) ||
@@ -729,7 +688,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
 
             string = romanize_string(string) if romanize
 
-            scripts_translation_map.insert_at_index(scripts_lines.length, string, '') if processing_type == :append &&
+            scripts_translation_map.insert_at_index(scripts_lines.length, string, '') if processing_mode == :append &&
                 !scripts_translation_map.include?(string)
 
             scripts_lines.add(string)
@@ -740,7 +699,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
 
     File.binwrite(scripts_plain_output_path, codes_content.join("\n"))
 
-    original_content, translated_content = if processing_type == :append
+    original_content, translated_content = if processing_mode == :append
                                                [scripts_translation_map.keys.join("\n"),
                                                 scripts_translation_map.values.join("\n")]
                                            else

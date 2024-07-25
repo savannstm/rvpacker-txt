@@ -188,7 +188,9 @@ module RGSS
         end
     end
 
-    classes_nested_array = [
+    # All used Ruby classes inside RPG Maker XP, VX, VX Ace games, that must be initialized to properly
+    # Marshal.load() files from these games
+    CLASSES_NESTED_ARRAY = [
         # RGSS data structures
         %i[RPG Actor],
         %i[RPG Animation],
@@ -239,7 +241,7 @@ module RGSS
         %i[RPG Weapon]
     ].freeze
 
-    classes_nested_array.each do |symbol_array|
+    CLASSES_NESTED_ARRAY.each do |symbol_array|
         process(Object, *symbol_array)
     end
 end

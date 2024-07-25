@@ -1,49 +1,7 @@
 # frozen_string_literal: true
 
 require 'zlib'
-
-# @param [String] string
-# @return [String]
-def self.romanize_string(string)
-    string.each_char.each_with_index do |char, i|
-        case char
-            when '。'
-                string[i] = '.'
-            when '、'
-                string[i] = ','
-            when '・'
-                string[i] = '·'
-            when '゠'
-                string[i] = '–'
-            when '＝'
-                string[i] = '—'
-            when '…'
-                string[i, 3] = '...'
-            when '「', '」', '〈', '〉'
-                string[i] = "'"
-            when '『', '』', '《', '》'
-                string[i] = '"'
-            when '（', '〔', '｟', '〘'
-                string[i] = '('
-            when '）', '〕', '｠', '〙'
-                string[i] = ')'
-            when '｛'
-                string[i] = '{'
-            when '｝'
-                string[i] = '}'
-            when '［', '【', '〖', '〚'
-                string[i] = '['
-            when '］', '】', '〗', '〛'
-                string[i] = ']'
-            when '〜'
-                string[i] = '~'
-            else
-                nil
-        end
-    end
-
-    string
-end
+require 'extensions'
 
 # @param [String] string A parsed scripts code string, containing raw Ruby code
 # @return [Array<Array<String, Integer>>] Hash of parsed from code strings and their start indices
@@ -101,8 +59,8 @@ def self.extract_quoted_strings(string)
     [strings_array, indices_array]
 end
 
-# @param [Array<String>] array
-# @return [Array<String>]
+# @param [Array<String>] array Array of strings
+# @return [Array<String>] Array of shuffled strings
 def self.shuffle_words(array)
     array.each do |string|
         select_words_re = /\S+/
@@ -113,7 +71,7 @@ end
 
 # @param [Integer] code
 # @param [String] parameter
-# @param [Hash{String => String}] hashmap
+# @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] game_type
 def self.get_parameter_translated(code, parameter, hashmap, game_type)
     unless game_type.nil?
@@ -158,20 +116,20 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
 end
 
 # @param [String] variable
-# @param [Hash{String => String}] hashmap
+# @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] _game_type
 # @return [String]
 def self.get_variable_translated(variable, hashmap, _game_type)
     hashmap[variable]
 end
 
-# @param [Array<String>] original_files_paths
-# @param [String] maps_path
-# @param [String] output_path
-# @param [Integer] shuffle_level
-# @param [Boolean] romanize
-# @param [Boolean] logging
-# @param [String] game_type
+# @param [Array<String>] original_files_paths Array of paths to original files
+# @param [String] maps_path Path to directory containing .txt maps files
+# @param [String] output_path Path to output directory
+# @param [Integer] shuffle_level Level of shuffle
+# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare with parsed
+# @param [Boolean] logging Whether to log
+# @param [String] game_type Game type for custom parsing
 def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, romanize, logging, game_type)
     maps_object_map = Hash[original_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
@@ -316,10 +274,10 @@ end
 # @param [Array<String>] original_files
 # @param [String] other_path
 # @param [String] output_path
-# @param [Integer] shuffle_level
-# @param [Boolean] romanize
-# @param [Boolean] logging
-# @param [String] game_type
+# @param [Integer] shuffle_level Level of shuffle
+# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare with parsed
+# @param [Boolean] logging Whether to log
+# @param [String] game_type Game type for custom parsing
 def self.write_other(original_files_paths, other_path, output_path, shuffle_level, romanize, logging, game_type)
     other_object_array_map = Hash[original_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
@@ -494,9 +452,9 @@ end
 # @param [String] ini_file_path
 # @param [String] other_path
 # @param [String] output_path
-# @param [Integer] shuffle_level
-# @param [Boolean] romanize
-# @param [Boolean] logging
+# @param [Integer] shuffle_level Level of shuffle
+# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare with parsed
+# @param [Boolean] logging Whether to log
 def self.write_system(system_file_path, ini_file_path, other_path, output_path, shuffle_level, romanize, logging)
     system_basename = File.basename(system_file_path)
     system_object = Marshal.load(File.binread(system_file_path))
@@ -597,7 +555,7 @@ end
 # @param [String] scripts_file_path Path to Scripts.*data file
 # @param [String] other_path Path to translation/other directory containing .txt files
 # @param [String] output_path Path to the output directory
-# @param [Boolean] romanize
+# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare with parsed
 # @param [Boolean] logging Whether to log
 def self.write_scripts(scripts_file_path, other_path, output_path, romanize, logging)
     scripts_basename = File.basename(scripts_file_path)

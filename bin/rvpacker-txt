@@ -17,7 +17,7 @@ def self.parse_options
                     scripts: false
                 },
                 disable_custom_processing: false,
-                romanize_string: false,
+                romanize: false,
                 logging: false,
                 force: false,
                 append: false,
@@ -54,7 +54,7 @@ def self.parse_options
                 ["#{write_command_description}\n\nOPTIONS:\n",
                  ['Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.'],
                  ['Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.'],
-                 ['Use to correctly write files back if you have parsed them with --romanize flag.',]]
+                 ['Use to correctly write files back if you have parsed them with --romanize flag.']]
             else
                 [banner_text,
                  ['When reading: Input directory, containing folders "original" or "data" with original game files.',
@@ -96,7 +96,7 @@ def self.parse_options
 
         cmd.on('-r', '--romanize',
                *romanize_description) do
-            options[:romanize_string] = true
+            options[:romanize] = true
         end
 
         if options[:action] == 'read'
@@ -165,7 +165,7 @@ force = options[:force]
 # @type [Boolean]
 append = options[:append]
 # @type [Boolean]
-romanize = options[:romanize_string]
+romanize = options[:romanize]
 
 extensions = { xp: 'rxdata', vx: 'rvdata', ace: 'rvdata2' }
 
@@ -214,7 +214,7 @@ $wait_time = 0
 if options[:action] == 'read'
     require 'read'
 
-    processing_type = if force
+    processing_mode = if force
                           wait_time_start = Time.now
 
                           puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
@@ -230,10 +230,10 @@ if options[:action] == 'read'
                           :default
                       end
 
-    read_map(maps_files_paths, maps_path, romanize, logging, game_type, processing_type) unless disable_processing[:maps]
-    read_other(other_files_paths, other_path, romanize, logging, game_type, processing_type) unless disable_processing[:other]
-    read_system(system_file_path, ini_file_path, other_path, romanize, logging, processing_type) unless disable_processing[:system]
-    read_scripts(scripts_file_path, other_path, romanize, logging, processing_type) unless disable_processing[:scripts]
+    read_map(maps_files_paths, maps_path, romanize, logging, game_type, processing_mode) unless disable_processing[:maps]
+    read_other(other_files_paths, other_path, romanize, logging, game_type, processing_mode) unless disable_processing[:other]
+    read_system(system_file_path, ini_file_path, other_path, romanize, logging, processing_mode) unless disable_processing[:system]
+    read_scripts(scripts_file_path, other_path, romanize, logging, processing_mode) unless disable_processing[:scripts]
 else
     require 'write'
 
