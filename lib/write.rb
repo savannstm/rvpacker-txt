@@ -444,7 +444,7 @@ def self.write_ini_title(ini_file_path, translated)
     title_line_index = file_lines.each_with_index { |line, i| break i if line.downcase.start_with?('title') }
     return if title_line_index.is_a?(Array)
 
-    file_lines[title_line_index] = translated
+    file_lines[title_line_index] = "title =#{translated}"
     File.binwrite(ini_file_path, file_lines.join("\n"))
 end
 

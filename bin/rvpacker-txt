@@ -21,9 +21,11 @@ def self.parse_options
                 logging: false,
                 force: false,
                 append: false,
-                shuffle_level: 0 }
+                shuffle_level: 0,
+                silent: false }
 
     options[:action] = ARGV[0]
+    options[:silent] = true unless ARGV.delete('--silent').nil?
 
     unless %w[read write].include?(options[:action])
         if %w[-h --help].include?(options[:action])
@@ -124,11 +126,13 @@ def self.parse_options
             end
         end
 
-        cmd.on('-l', '--log', 'Enables logging.') do
+        cmd.on('-l', '--log',
+               'Enables logging.') do
             options[:logging] = true
         end
 
-        cmd.on('-h', '--help', "Prints the program's help message or for the entered subcommand.") do
+        cmd.on('-h', '--help',
+               "Prints the program's help message or for the entered subcommand.") do
             puts cmd
             exit
         end
@@ -166,6 +170,7 @@ force = options[:force]
 append = options[:append]
 # @type [Boolean]
 romanize = options[:romanize]
+silent = options[:silent]
 
 extensions = { xp: 'rxdata', vx: 'rvdata', ace: 'rvdata2' }
 
@@ -215,14 +220,16 @@ if options[:action] == 'read'
     require 'read'
 
     processing_mode = if force
-                          wait_time_start = Time.now
+                          unless options[:silent]
+                              wait_time_start = Time.now
 
-                          puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
-                               "If you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.",
-                               "Input 'Y' to continue."
-                          exit unless $stdin.gets.chomp == 'Y'
+                              puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
+                                   "If you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.",
+                                   "Input 'Y' to continue."
+                              exit unless $stdin.gets.chomp == 'Y'
 
-                          $wait_time += Time.now - wait_time_start
+                              $wait_time += Time.now - wait_time_start
+                          end
                           :force
                       elsif append
                           :append
