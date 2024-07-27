@@ -74,52 +74,58 @@ end
 # @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] game_type
 def self.get_parameter_translated(code, parameter, hashmap, game_type)
+    ends_with_if = parameter[/ if\(.*\)$/]
+    parameter = parameter.chomp(ends_with_if) if ends_with_if
+
     unless game_type.nil?
-        lisa_start = nil
+        case game_type
+            when 'lisa'
+                case code
+                    when 401, 405
+                        prefix = parameter[/^(\\et\[[0-9]+\]|\\nbt)/]
+                        parameter = parameter.sub(prefix, '') if prefix
 
-        case code
-            when 401, 405
-                case game_type
-                    when 'lisa'
-                        match = parameter.scan(/^\\et\[[0-9]+\]/)
-                        match = parameter.scan(/^\\nbt/) if match.empty?
+                        translated = hashmap[parameter]
+                        return nil if translated.nil? || translated.empty?
 
-                        unless match.empty?
-                            lisa_start = match[0]
-                            parameter = parameter.slice((match[0].length)..)
-                        end
+                        translated = prefix + translated if prefix
+                        return translated
+                    when 102, 402
+                        # Implement some custom parsing
+                    when 356
+                        # Implement some custom parsing
                     else
                         nil
                 end
-            when 102, 402
-                # Implement some custom parsing
-            when 356
-                # Implement some custom parsing
+                # Implement cases for other games
             else
                 nil
         end
-
-        gotten = hashmap[parameter]
-        return nil if gotten.nil?
-
-        case game_type
-            when 'lisa'
-                gotten = lisa_start + gotten unless lisa_start.nil?
-            else
-                nil
-        end
-
-        return gotten
     end
 
-    hashmap[parameter]
+    translated = hashmap[parameter]
+    return nil if translated.nil? || translated.empty?
+    translated += ends_with_if if ends_with_if
+    translated
 end
 
 # @param [String] variable
+# # @param [Integer] type
 # @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] _game_type
 # @return [String]
-def self.get_variable_translated(variable, hashmap, _game_type)
+def self.get_variable_translated(variable, type, hashmap, _game_type)
+    variable = variable.gsub(/\r?\n/, "\n")
+
+    case type
+        when 0 # name
+        when 1 # nickname
+        when 2 # description
+        when 3 # note
+        else
+            nil
+    end
+
     hashmap[variable]
 end
 
@@ -208,7 +214,9 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                                     list[index].parameters[0] = i < split_length ? split[i] : ''
                                 end
 
-                                list[item_indices.last].parameters[0] = split[line_length..].join("\n") if split_length > line_length
+                                if split_length > line_length
+                                    list[item_indices.last].parameters[0] = split[line_length..].join("\n")
+                                end
                             end
                         end
                         next
@@ -313,23 +321,21 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                 description = object.description
                 note = object.note
 
-                [name, nickname, description, note].each_with_index do |variable, i|
+                [name, nickname, description, note].each_with_index do |variable, type|
                     next unless variable.is_a?(String)
 
                     variable = variable.strip
                     next if variable.empty?
 
-                    variable = variable.gsub(/\r\n/, "\n")
                     variable = romanize_string(variable) if romanize
-
-                    translated = get_variable_translated(variable, other_translation_map, game_type)
+                    translated = get_variable_translated(variable, type, other_translation_map, game_type)
 
                     unless translated.nil? || translated.empty?
-                        if i.zero?
+                        if type.zero?
                             object.name = translated
-                        elsif i == 1
+                        elsif type == 1
                             object.nickname = translated if object.is_a?(RPG::Actor)
-                        elsif i == 2
+                        elsif type == 2
                             object.description = translated
                         else
                             object.note = translated
@@ -372,7 +378,9 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                                         list[index].parameters[0] = i < split_length ? split[i] : ''
                                     end
 
-                                    list[item_indices.last].parameters[0] = split[line_length..].join("\n") if split_length > line_length
+                                    if split_length > line_length
+                                        list[item_indices.last].parameters[0] = split[line_length..].join("\n")
+                                    end
                                 end
                             end
                             next

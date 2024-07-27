@@ -43,29 +43,22 @@ def self.parse_options
 
     banner,
         input_dir_description,
-        output_dir_description,
-        romanize_description =
+        output_dir_description, =
         case options[:action]
             when 'read'
                 ["#{read_command_description}\n\nOPTIONS:\n",
                  ['Input directory, containing folders "original" or "data" with original game files.'],
-                 ['Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.'],
-                 ['If you parsing text from a Japanese game, that contains symbols like 「」, which are just the Japanese quotation marks,',
-                  'it automatically replaces these symbols by their roman equivalents.']]
+                 ['Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.']]
             when 'write'
                 ["#{write_command_description}\n\nOPTIONS:\n",
                  ['Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.'],
-                 ['Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.'],
-                 ['Use to correctly write files back if you have parsed them with --romanize flag.']]
+                 ['Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.']]
             else
                 [banner_text,
                  ['When reading: Input directory, containing folders "original" or "data" with original game files.',
                   'When writing: Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.'],
                  ['When reading: Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.',
-                  'When writing: Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.'],
-                 ['When reading: If you parsing text from a Japanese game, that contains symbols like 「」,',
-                  'which are just the Japanese quotation marks, it automatically replaces these symbols by their roman equivalents.',
-                  'When writing: Use to correctly write files back if you have parsed them with --romanize flag.']]
+                  'When writing: Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.']]
         end
 
     OptionParser.new(banner) do |cmd|
@@ -92,16 +85,19 @@ def self.parse_options
         end
 
         cmd.on('--disable-custom-processing',
-               'Disables built-in custom parsing/writing for some games.') do
+               'Disables built-in custom parsing/writing for some games.',
+               'This flag will automatically be used when writing if you parsed game text with it.') do
             options[:disable_custom_processing] = true
         end
 
-        cmd.on('-r', '--romanize',
-               *romanize_description) do
-            options[:romanize] = true
-        end
-
         if options[:action] == 'read'
+            cmd.on('-r', '--romanize',
+                   'If you parsing text from a Japanese game, that contains symbols like 「」,',
+                   'which are just the Japanese quotation marks, it automatically replaces these symbols by their roman equivalents.',
+                   'This flag will automatically be used when writing if you parsed game text with it.') do
+                options[:romanize] = true
+            end
+
             cmd.on('-f', '--force',
                    'Force rewrite all files. Cannot be used with --append.',
                    'USE WITH CAUTION!') do
@@ -110,7 +106,7 @@ def self.parse_options
 
             cmd.on('-a', '--append',
                    "When the rvpacker-txt or the game which files you've parsed receives an update, you probably should re-read game files with --append,",
-                   ' which will append any new text to your files without overwriting the progress.',
+                   'which will append any new text to your files without overwriting the progress.',
                    'Cannot be used with --force.') do
                 raise '--append cannot be used with --force.' if options[:force]
                 options[:append] = true
@@ -170,6 +166,7 @@ force = options[:force]
 append = options[:append]
 # @type [Boolean]
 romanize = options[:romanize]
+# @type [Boolean]
 silent = options[:silent]
 
 extensions = { xp: 'rxdata', vx: 'rvdata', ace: 'rvdata2' }
@@ -179,6 +176,7 @@ raise '"Data" or "original" directory not found within input directory.' unless 
 
 maps_path = File.join(input_path, 'translation', 'maps')
 other_path = File.join(input_path, 'translation', 'other')
+metadata_file_path = File.join(input_path, 'translation', '.rvpacker-txt-metadata.marshal')
 
 FileUtils.mkdir_p(maps_path)
 FileUtils.mkdir_p(other_path)
@@ -220,7 +218,7 @@ if options[:action] == 'read'
     require 'read'
 
     processing_mode = if force
-                          unless options[:silent]
+                          unless silent
                               wait_time_start = Time.now
 
                               puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
@@ -237,6 +235,8 @@ if options[:action] == 'read'
                           :default
                       end
 
+    File.binwrite(metadata_file_path, Marshal.dump({ romanize: romanize, disable_custom_processing: disable_custom_processing }))
+
     read_map(maps_files_paths, maps_path, romanize, logging, game_type, processing_mode) unless disable_processing[:maps]
     read_other(other_files_paths, other_path, romanize, logging, game_type, processing_mode) unless disable_processing[:other]
     read_system(system_file_path, ini_file_path, other_path, romanize, logging, processing_mode) unless disable_processing[:system]
@@ -246,6 +246,20 @@ else
 
     output_path = File.join(output_path, 'output')
     FileUtils.mkdir_p(output_path)
+
+    if File.exist?(metadata_file_path)
+        metadata = Marshal.load(File.binread(metadata_file_path))
+
+        if metadata[:romanize]
+            puts 'Enabling romanize according to the metadata from previous read.'
+            romanize = metadata[:romanize]
+        end
+
+        if metadata[:disable_custom_processing] && !game_type.nil?
+            puts 'Disabling custom parsing according to the metadata from previous read.'
+            game_type = nil
+        end
+    end
 
     write_map(maps_files_paths, maps_path, output_path, shuffle_level, romanize, logging, game_type) unless disable_processing[:maps]
     write_other(other_files_paths, other_path, output_path, shuffle_level, romanize, logging, game_type) unless disable_processing[:other]

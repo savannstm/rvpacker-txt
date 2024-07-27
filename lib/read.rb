@@ -3,7 +3,7 @@
 require 'zlib'
 require_relative 'extensions'
 
-STRING_IS_ONLY_SYMBOLS_RE = /^[.()+-:;\[\]^~%&!*\/→×？?ｘ％▼| ]+$/
+STRING_IS_ONLY_SYMBOLS_RE = /^[.()+\-:;\[\]^~%&!№$@`*\/→×？?ｘ％▼|♥♪！：〜『』「」〽。…‥＝゠、，【】［］｛｝（）〔〕｟｠〘〙〈〉《》・\\#'"<>=_ー※▶ⅠⅰⅡⅱⅢⅲⅣⅳⅤⅴⅥⅵⅦⅶⅧⅷⅨⅸⅩⅹⅪⅺⅫⅻⅬⅼⅭⅽⅮⅾⅯⅿ\s]+$/
 APPEND_FLAG_OMIT_MSG = "Files aren't already parsed. Continuing as if --append flag was omitted."
 
 class Hash
@@ -76,40 +76,64 @@ end
 def self.parse_parameter(code, parameter, game_type)
     return nil if parameter.match?(STRING_IS_ONLY_SYMBOLS_RE)
 
+    ends_with_if = parameter[/ if\(.*\)$/]
+    parameter = parameter.chomp(ends_with_if) if ends_with_if
+
     unless game_type.nil?
-        case code
-            when 401, 405
-                case game_type
-                    when 'lisa'
-                        match = parameter.scan(/^\\et\[[0-9]+\]/)
-                        match = parameter.scan(/^\\nbt/) if match.empty?
-                        parameter = parameter[match[0].length..] unless match.empty?
+        case game_type
+            when 'lisa'
+                case code
+                    when 401, 405
+                        prefix = parameter[/^(\\et\[[0-9]+\]|\\nbt)/]
+                        parameter = parameter.sub(prefix, '') if prefix
+                    when 102
+                        # Implement some custom parsing
+                    when 356
+                        # Implement some custom parsing
                     else
-                        nil
+                        return nil
                 end
-            when 102
-                # Implement some custom parsing
-            when 356
-                # Implement some custom parsing
+                # Implement cases for other games
             else
-                return nil
+                nil
         end
+
     end
 
     parameter
 end
 
 # @param [String] variable
+# @param [Integer] type
 # @param [String] _game_type
 # @return [String]
-def self.parse_variable(variable, _game_type)
-    return nil if variable.match?(STRING_IS_ONLY_SYMBOLS_RE)
-    variable = variable.gsub(/\r?\n/, '\#') if variable.count("\n").positive?
+def self.parse_variable(variable, type, _game_type)
+    variable = variable.gsub(/\r?\n/, '\#')
+    return nil if variable.match?(STRING_IS_ONLY_SYMBOLS_RE) # for some reason it returns true if multi-line string contains carriage returns (wtf?)
 
-    return nil if variable.split('\#').all? { |line| line.strip.match?(/(^#? ?<.*>\.?$)|^$/) }
+    only_html_elements = true
+
+    variable.split('\#').each do |line|
+        unless line.strip.match?(/^(#? ?<.*>\.?)$|^$/)
+            only_html_elements = false
+            break
+        end
+    end
+
+    return nil if only_html_elements
+
     return nil if variable.match?(/^[+-]?[0-9]*$/) ||
         variable.match?(/---/) ||
         variable.match?(/restrict eval/)
+
+    case type
+        when 0 # name
+        when 1 # nickname
+        when 2 # description
+        when 3 # note
+        else
+            nil
+    end
 
     variable
 end
@@ -326,13 +350,13 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                 description = object.description
                 note = object.note
 
-                [name, nickname, description, note].each do |variable|
+                [name, nickname, description, note].each_with_index do |variable, type|
                     next unless variable.is_a?(String)
 
                     variable = variable.strip
                     next if variable.empty?
 
-                    parsed = parse_variable(variable, game_type)
+                    parsed = parse_variable(variable, type, game_type)
                     next if parsed.nil?
 
                     parsed = parsed.gsub(/\r?\n/, '\#')
@@ -395,35 +419,44 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                                 subparameter = subparameter.strip
                                 next if subparameter.empty?
 
-                                subparameter = romanize_string(subparameter) if romanize
+                                parsed = parse_parameter(code, subparameter, game_type)
+                                next if parsed.nil?
 
-                                other_translation_map.insert_at_index(other_lines.length, subparameter, '') if inner_processing_type == :append &&
-                                    !other_translation_map.include?(subparameter)
+                                parsed = romanize_string(parsed) if romanize
 
-                                other_lines.add(subparameter)
+                                other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
+                                    !other_translation_map.include?(parsed)
+
+                                other_lines.add(parsed)
                             end
                         elsif parameters[0].is_a?(String)
                             parameter = parameters[0].strip
                             next if parameter.empty?
 
-                            parameter = parameter.gsub(/\r?\n/, '\#')
-                            parameter = romanize_string(parameter) if romanize
+                            parsed = parse_parameter(code, parameter, game_type)
+                            next if parsed.nil?
 
-                            other_translation_map.insert_at_index(other_lines.length, parameter, '') if inner_processing_type == :append &&
-                                !other_translation_map.include?(parameter)
+                            parsed = parsed.gsub(/\r?\n/, '\#')
+                            parsed = romanize_string(parsed) if romanize
 
-                            other_lines.add(parameter)
+                            other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
+                                !other_translation_map.include?(parsed)
+
+                            other_lines.add(parsed)
                         elsif parameters[1].is_a?(String)
                             parameter = parameters[1].strip
                             next if parameter.empty?
 
-                            parameter = parameter.gsub(/\r?\n/, '\#')
-                            parameter = romanize_string(parameter) if romanize
+                            parsed = parse_parameter(code, parameter, game_type)
+                            next if parsed.nil?
 
-                            other_translation_map.insert_at_index(other_lines.length, parameter, '') if inner_processing_type == :append &&
-                                !other_translation_map.include?(parameter)
+                            parsed = parsed.gsub(/\r?\n/, '\#')
+                            parsed = romanize_string(parsed) if romanize
 
-                            other_lines.add(parameter)
+                            other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
+                                !other_translation_map.include?(parsed)
+
+                            other_lines.add(parsed)
                         end
                     end
                 end
@@ -653,7 +686,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
                 string.match?(/^(.)\1{2,}$/) ||
                 string.match?(/^(false|true)$/) ||
                 string.match?(/^[wr]b$/) ||
-                string.match?(/^(?=.*\d)[A-Za-z0-9\-]+$/) ||
+                string.match?(/^(?=.*\d)[A-Za-z0-9-]+$/) ||
                 string.match?(/^[a-z\-()\/ +'&]*$/) ||
                 string.match?(/^[A-Za-z]+[+-]$/) ||
                 string.match?(STRING_IS_ONLY_SYMBOLS_RE) ||
