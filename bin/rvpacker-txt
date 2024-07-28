@@ -85,19 +85,19 @@ def self.parse_options
         end
 
         cmd.on('--disable-custom-processing',
-               'Disables built-in custom parsing/writing for some games.',
+               'Disables built-in custom text processing for some games.',
                'This flag will automatically be used when writing if you parsed game text with it.') do
             options[:disable_custom_processing] = true
         end
 
-        if options[:action] == 'read'
-            cmd.on('-r', '--romanize',
-                   'If you parsing text from a Japanese game, that contains symbols like 「」,',
-                   'which are just the Japanese quotation marks, it automatically replaces these symbols by their roman equivalents.',
-                   'This flag will automatically be used when writing if you parsed game text with it.') do
-                options[:romanize] = true
-            end
+        cmd.on('-r', '--romanize',
+               'If you parsing text from a Japanese game, that contains symbols like 「」, which are just the Japanese quotation marks,',
+               'it automatically replaces these symbols by their roman equivalents (in this case, "").',
+               'This flag will automatically be used when writing if you parsed game text with it.') do
+            options[:romanize] = true
+        end
 
+        if options[:action] == 'read'
             cmd.on('-f', '--force',
                    'Force rewrite all files. Cannot be used with --append.',
                    'USE WITH CAUTION!') do
@@ -256,7 +256,7 @@ else
         end
 
         if metadata[:disable_custom_processing] && !game_type.nil?
-            puts 'Disabling custom parsing according to the metadata from previous read.'
+            puts 'Disabling custom processing according to the metadata from previous read.'
             game_type = nil
         end
     end

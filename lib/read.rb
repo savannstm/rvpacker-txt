@@ -3,71 +3,8 @@
 require 'zlib'
 require_relative 'extensions'
 
-STRING_IS_ONLY_SYMBOLS_RE = /^[.()+\-:;\[\]^~%&!№$@`*\/→×？?ｘ％▼|♥♪！：〜『』「」〽。…‥＝゠、，【】［］｛｝（）〔〕｟｠〘〙〈〉《》・\\#'"<>=_ー※▶ⅠⅰⅡⅱⅢⅲⅣⅳⅤⅴⅥⅵⅦⅶⅧⅷⅨⅸⅩⅹⅪⅺⅫⅻⅬⅼⅭⅽⅮⅾⅯⅿ\s]+$/
+STRING_IS_ONLY_SYMBOLS_RE = /^[.()+\-:;\[\]^~%&!№$@`*\/→×？?ｘ％▼|♥♪！：〜『』「」〽。…‥＝゠、，【】［］｛｝（）〔〕｟｠〘〙〈〉《》・\\#'"<>=_ー※▶ⅠⅰⅡⅱⅢⅲⅣⅳⅤⅴⅥⅵⅦⅶⅧⅷⅨⅸⅩⅹⅪⅺⅫⅻⅬⅼⅭⅽⅮⅾⅯⅿ\s0-9]+$/
 APPEND_FLAG_OMIT_MSG = "Files aren't already parsed. Continuing as if --append flag was omitted."
-
-class Hash
-    def insert_at_index(index, key, value)
-        return self[key] = value if index >= size
-
-        temp_array = to_a
-        temp_array.insert(index, [key, value])
-        replace(temp_array.to_h)
-    end
-end
-
-# @param [String] string A parsed scripts code string, containing raw Ruby code
-# @return [IndexSet<String>] Set of extracted strings
-def self.extract_quoted_strings(string)
-    result = IndexSet.new
-
-    skip_block = false
-    in_quotes = false
-    quote_type = nil
-    buffer = []
-
-    string.each_line do |line|
-        stripped = line.strip
-
-        next if stripped[0] == '#' ||
-            (!in_quotes && !stripped.match?(/["']/)) ||
-            stripped.start_with?(/(Win|Lose)|_Fanfare/) ||
-            stripped.match?(/eval\(/)
-
-        skip_block = true if stripped.start_with?('=begin')
-        skip_block = false if stripped.start_with?('=end')
-
-        next if skip_block
-
-        line.each_char do |char|
-            if %w[' "].include?(char)
-                unless quote_type.nil? || char == quote_type
-                    buffer.push(char)
-                    next
-                end
-
-                quote_type = char
-                in_quotes = !in_quotes
-                result.add(buffer.join)
-                buffer.clear
-                next
-            end
-
-            next unless in_quotes
-
-            if char == "\r"
-                next
-            elsif char == "\n"
-                buffer.push('\#')
-                next
-            end
-
-            buffer.push(char)
-        end
-    end
-
-    result
-end
 
 # @param [Integer] code
 # @param [String] parameter
@@ -108,21 +45,19 @@ end
 # @param [String] _game_type
 # @return [String]
 def self.parse_variable(variable, type, _game_type)
-    variable = variable.gsub(/\r?\n/, '\#')
-    return nil if variable.match?(STRING_IS_ONLY_SYMBOLS_RE) # for some reason it returns true if multi-line string contains carriage returns (wtf?)
+    variable = variable.gsub(/\r?\n/, "\n")
+    # for some reason it returns true if multi-line string contains carriage returns (wtf?)
+    return nil if variable.match?(STRING_IS_ONLY_SYMBOLS_RE)
 
-    only_html_elements = true
-
-    variable.split('\#').each do |line|
-        unless line.strip.match?(/^(#? ?<.*>\.?)$|^$/)
-            only_html_elements = false
-            break
-        end
+    if variable.split("\n").all? do |line|
+        line.empty? ||
+            line.match?(/^#? ?<.*>.?$/) ||
+            line.match?(/^[a-z][0-9]$/)
+    end
+        return nil
     end
 
-    return nil if only_html_elements
-
-    return nil if variable.match?(/^[+-]?[0-9]*$/) ||
+    return nil if variable.match?(/^[+-]?[0-9]+$/) ||
         variable.match?(/---/) ||
         variable.match?(/restrict eval/)
 
@@ -213,9 +148,9 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                 list.each do |item|
                     code = item.code
 
-                    unless allowed_codes.include?(code)
-                        if in_sequence
-                            joined = line.join('\#').strip
+                    if in_sequence && code != 401
+                        unless line.empty?
+                            joined = line.join("\n").strip.gsub("\n", '\#')
                             parsed = parse_parameter(401, joined, game_type)
 
                             unless parsed.nil?
@@ -225,13 +160,14 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                                     !maps_translation_map.include?(parsed)
 
                                 maps_lines.add(parsed)
-
-                                line.clear
-                                in_sequence = false
                             end
                         end
-                        next
+
+                        line.clear
+                        in_sequence = false
                     end
+
+                    next unless allowed_codes.include?(code)
 
                     parameters = item.parameters
 
@@ -239,7 +175,7 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                         next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
                         in_sequence = true
-                        line.push(parameters[0])
+                        line.push(parameters[0].gsub('　', ' ').strip)
                     elsif parameters[0].is_a?(Array)
                         parameters[0].each do |subparameter|
                             next unless subparameter.is_a?(String)
@@ -264,7 +200,6 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
                         parsed = parse_parameter(code, parameter, game_type)
                         next if parsed.nil?
 
-                        parsed = parsed.gsub(/\r?\n/, '\#')
                         parsed = romanize_string(parsed) if romanize
 
                         maps_translation_map.insert_at_index(maps_lines.length, parsed, '') if processing_mode == :append &&
@@ -350,22 +285,28 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                 description = object.description
                 note = object.note
 
-                [name, nickname, description, note].each_with_index do |variable, type|
-                    next unless variable.is_a?(String)
+                catch :next_object do
+                    [name, nickname, description, note].each_with_index do |variable, type|
+                        next unless variable.is_a?(String)
 
-                    variable = variable.strip
-                    next if variable.empty?
+                        variable = variable.strip
+                        next if variable.empty?
 
-                    parsed = parse_variable(variable, type, game_type)
-                    next if parsed.nil?
+                        parsed = parse_variable(variable, type, game_type)
 
-                    parsed = parsed.gsub(/\r?\n/, '\#')
-                    parsed = romanize_string(parsed) if romanize
+                        if !parsed.nil?
+                            parsed = romanize_string(parsed) if romanize
 
-                    other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
-                        !other_translation_map.include?(parsed)
+                            parsed = parsed.split("\n").map(&:strip).join('\#')
 
-                    other_lines.add(parsed)
+                            other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
+                                !other_translation_map.include?(parsed)
+
+                            other_lines.add(parsed)
+                        elsif type.zero?
+                            throw :next_object
+                        end
+                    end
                 end
             end
         else
@@ -385,9 +326,9 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                     list.each do |item|
                         code = item.code
 
-                        unless allowed_codes.include?(code)
-                            if in_sequence
-                                joined = line.join('\#').strip
+                        if in_sequence && ![401, 405].include?(code)
+                            unless line.empty?
+                                joined = line.join("\n").strip.gsub("\n", '\#')
                                 parsed = parse_parameter(401, joined, game_type)
 
                                 unless parsed.nil?
@@ -397,13 +338,14 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                                         !other_translation_map.include?(parsed)
 
                                     other_lines.add(parsed)
-
-                                    line.clear
-                                    in_sequence = false
                                 end
                             end
-                            next
+
+                            line.clear
+                            in_sequence = false
                         end
+
+                        next unless allowed_codes.include?(code)
 
                         parameters = item.parameters
 
@@ -411,7 +353,7 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                             next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
                             in_sequence = true
-                            line.push(parameters[0].gsub(/\r?\n/, '\#'))
+                            line.push(parameters[0].gsub('　', ' ').strip)
                         elsif parameters[0].is_a?(Array)
                             parameters[0].each do |subparameter|
                                 next unless subparameter.is_a?(String)
@@ -436,7 +378,6 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                             parsed = parse_parameter(code, parameter, game_type)
                             next if parsed.nil?
 
-                            parsed = parsed.gsub(/\r?\n/, '\#')
                             parsed = romanize_string(parsed) if romanize
 
                             other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
@@ -450,7 +391,6 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
                             parsed = parse_parameter(code, parameter, game_type)
                             next if parsed.nil?
 
-                            parsed = parsed.gsub(/\r?\n/, '\#')
                             parsed = romanize_string(parsed) if romanize
 
                             other_translation_map.insert_at_index(other_lines.length, parsed, '') if inner_processing_type == :append &&
@@ -670,7 +610,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
             end
         end
 
-        extract_quoted_strings(code).each do |string|
+        extract_quoted_strings(code, :read).each do |string|
             # Removes the U+3000 Japanese typographical space to check if string, when stripped, is truly empty
             string = string.strip.delete('　')
 

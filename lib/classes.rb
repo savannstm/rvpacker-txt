@@ -112,6 +112,16 @@ class IndexSet
     end
 end
 
+class Hash
+    def insert_at_index(index, key, value)
+        return self[key] = value if index >= size
+
+        temp_array = to_a
+        temp_array.insert(index, [key, value])
+        replace(temp_array.to_h)
+    end
+end
+
 module RPG
     class Map
         attr_accessor :display_name, :events

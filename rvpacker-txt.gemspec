@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |spec|
     spec.name = 'rvpacker-txt'
-    spec.version = '1.10.0'
+    spec.version = '1.11.0'
     spec.authors = ['Howard Jeng', 'Andrew Kesterson', 'Solistra', 'Darkness9724', 'savannstm']
     spec.email = ['savannstm@gmail.com']
     spec.summary = 'Reads RPG Maker XP/VX/VXAce game text to .txt files and writes them to their initial form.'

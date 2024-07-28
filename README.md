@@ -36,7 +36,10 @@ OPTIONS:
         --disable-processing FILES   Skips processing specified files.
                                      Example: --disable-processing=maps,other,system.
                                      [Allowed values: maps, other, system, scripts]
-        --disable-custom-processing  Disables built-in custom parsing/writing for some games.
+        --disable-custom-processing  Disables built-in custom text processing for some games.
+                                     This flag will automatically be used when writing if you parsed game text with it.
+    -r, --romanize                   If you parsing text from a Japanese game, that contains symbols like 「」, which are just the Japanese quotation marks,
+                                     it automatically replaces these symbols by their roman equivalents (in this case, "").
                                      This flag will automatically be used when writing if you parsed game text with it.
     -l, --log                        Enables logging.
     -h, --help                       Prints the program's help message or for the entered subcommand.

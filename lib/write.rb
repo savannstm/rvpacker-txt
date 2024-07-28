@@ -3,79 +3,21 @@
 require 'zlib'
 require_relative 'extensions'
 
-# @param [String] string A parsed scripts code string, containing raw Ruby code
-# @return [Array<Array<String, Integer>>] Hash of parsed from code strings and their start indices
-def self.extract_quoted_strings(string)
-    strings_array = []
-    indices_array = []
-
-    skip_block = false
-    in_quotes = false
-    quote_type = nil
-    buffer = []
-
-    current_string_index = 0
-    string.each_line do |line|
-        stripped = line.strip
-
-        if stripped[0] == '#' || stripped.start_with?(/(Win|Lose)|_Fanfare/)
-            current_string_index += line.length
-            next
-        end
-
-        skip_block = true if stripped.start_with?('=begin')
-        skip_block = false if stripped.start_with?('=end')
-
-        if skip_block
-            current_string_index += line.length
-            next
-        end
-
-        buffer.push('\#') if in_quotes
-
-        line.each_char.each_with_index do |char, index|
-            if %w[' "].include?(char)
-                unless quote_type.nil? || char == quote_type
-                    buffer.push(char)
-                    next
-                end
-
-                quote_type = char
-                in_quotes = !in_quotes
-
-                strings_array.push(buffer.join)
-                indices_array.push(current_string_index + index)
-
-                buffer.clear
-                next
-            end
-
-            buffer.push(char) if in_quotes
-        end
-
-        current_string_index += line.length
-    end
-
-    [strings_array, indices_array]
-end
-
-# @param [Array<String>] array Array of strings
-# @return [Array<String>] Array of shuffled strings
-def self.shuffle_words(array)
-    array.each do |string|
-        select_words_re = /\S+/
-        words = string.scan(select_words_re).shuffle
-        string.gsub(select_words_re) { words.pop || '' }
-    end
-end
-
 # @param [Integer] code
 # @param [String] parameter
 # @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] game_type
 def self.get_parameter_translated(code, parameter, hashmap, game_type)
+    remaining_strings = []
+    insert_positions = []
+
     ends_with_if = parameter[/ if\(.*\)$/]
-    parameter = parameter.chomp(ends_with_if) if ends_with_if
+
+    if ends_with_if
+        parameter = parameter.chomp(ends_with_if)
+        remaining_strings.push(ends_with_if)
+        insert_positions.push(1)
+    end
 
     unless game_type.nil?
         case game_type
@@ -85,11 +27,8 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
                         prefix = parameter[/^(\\et\[[0-9]+\]|\\nbt)/]
                         parameter = parameter.sub(prefix, '') if prefix
 
-                        translated = hashmap[parameter]
-                        return nil if translated.nil? || translated.empty?
-
-                        translated = prefix + translated if prefix
-                        return translated
+                        remaining_strings.push(prefix)
+                        insert_positions.push(0)
                     when 102, 402
                         # Implement some custom parsing
                     when 356
@@ -105,16 +44,26 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
 
     translated = hashmap[parameter]
     return nil if translated.nil? || translated.empty?
-    translated += ends_with_if if ends_with_if
+
+    remaining_strings.zip(insert_positions).each do |string, position|
+        case position
+            when 0
+                translated = string + translated
+            when 1
+                translated += string
+        end
+    end
+
     translated
 end
 
 # @param [String] variable
-# # @param [Integer] type
+# @param [Integer] type
+# @param [String] filename
 # @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] _game_type
 # @return [String]
-def self.get_variable_translated(variable, type, hashmap, _game_type)
+def self.get_variable_translated(variable, type, _filename, hashmap, _game_type)
     variable = variable.gsub(/\r?\n/, "\n")
 
     case type
@@ -197,14 +146,14 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                 list.each_with_index do |item, it|
                     code = item.code
 
-                    unless allowed_codes.include?(code)
-                        if in_sequence
-                            joined = line.join('\#').strip
+                    if in_sequence && code != 401
+                        unless line.empty?
+                            joined = line.join("\n").strip
                             joined = romanize_string(joined) if romanize
 
                             translated = get_parameter_translated(401, joined, maps_translation_map, game_type)
 
-                            unless translated.nil? || translated.empty?
+                            if !translated.nil? && !translated.empty?
                                 split = translated.split('\#')
 
                                 split_length = split.length
@@ -219,8 +168,12 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                                 end
                             end
                         end
-                        next
+
+                        line.clear
+                        in_sequence = false
                     end
+
+                    next unless allowed_codes.include?(code)
 
                     parameters = item.parameters
 
@@ -228,7 +181,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                         next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
                         in_sequence = true
-                        line.push(parameters[0])
+                        line.push(parameters[0].gsub('　', ' ').strip)
                         item_indices.push(it)
                     elsif parameters[0].is_a?(Array)
                         parameters[0].each_with_index do |subparameter, sp|
@@ -240,7 +193,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                             subparameter = romanize_string(subparameter) if romanize
 
                             translated = get_parameter_translated(code, subparameter, maps_translation_map, game_type)
-                            parameters[0][sp] = translated unless translated.nil? || translated.empty?
+                            parameters[0][sp] = translated if !translated.nil? && !translated.empty?
                         end
                     elsif parameters[0].is_a?(String)
                         parameter = parameters[0].strip
@@ -249,7 +202,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                         parameter = romanize_string(parameter) if romanize
 
                         translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                        parameters[0] = translated unless translated.nil? || translated.empty?
+                        parameters[0] = translated if !translated.nil? && !translated.empty?
                     elsif parameters[1].is_a?(String)
                         parameter = parameters[1].strip
                         next if parameter.empty?
@@ -257,7 +210,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                         parameter = romanize_string(parameter) if romanize
 
                         translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                        parameters[1] = translated unless translated.nil? || translated.empty?
+                        parameters[1] = translated if !translated.nil? && !translated.empty?
                     end
 
                     item.parameters = parameters
@@ -328,9 +281,12 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                     next if variable.empty?
 
                     variable = romanize_string(variable) if romanize
-                    translated = get_variable_translated(variable, type, other_translation_map, game_type)
 
-                    unless translated.nil? || translated.empty?
+                    variable = variable.split("\n").map(&:strip).join("\n")
+
+                    translated = get_variable_translated(variable, type, filename, other_translation_map, game_type)
+
+                    if !translated.nil? && !translated.empty?
                         if type.zero?
                             object.name = translated
                         elsif type == 1
@@ -361,14 +317,14 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                     list.each_with_index do |item, it|
                         code = item.code
 
-                        unless allowed_codes.include?(code)
-                            if in_sequence
-                                joined = line.join('\#').strip
+                        if in_sequence && ![401, 405].include?(code)
+                            unless line.empty?
+                                joined = line.join("\n").strip
                                 joined = romanize_string(joined) if romanize
 
                                 translated = get_parameter_translated(401, joined, other_translation_map, game_type)
 
-                                unless translated.nil? || translated.empty?
+                                if !translated.nil? && !translated.empty?
                                     split = translated.split('\#')
 
                                     split_length = split.length
@@ -383,8 +339,12 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                                     end
                                 end
                             end
-                            next
+
+                            line.clear
+                            in_sequence = false
                         end
+
+                        next unless allowed_codes.include?(code)
 
                         parameters = item.parameters
 
@@ -392,7 +352,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                             next unless parameters[0].is_a?(String) && !parameters[0].empty?
 
                             in_sequence = true
-                            line.push(parameters[0])
+                            line.push(parameters[0].gsub('　', ' ').strip)
                             item_indices.push(it)
                         elsif parameters[0].is_a?(Array)
                             parameters[0].each_with_index do |subparameter, sp|
@@ -404,7 +364,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                                 subparameter = romanize_string(subparameter) if romanize
 
                                 translated = get_parameter_translated(code, subparameter, other_translation_map, game_type)
-                                parameters[0][sp] = translated unless translated.nil? || translated.empty?
+                                parameters[0][sp] = translated if !translated.nil? && !translated.empty?
                             end
                         elsif parameters[0].is_a?(String)
                             parameter = parameters[0].strip
@@ -413,7 +373,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                             parameter = romanize_string(parameter) if romanize
 
                             translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                            parameters[0] = translated unless translated.nil? || translated.empty?
+                            parameters[0] = translated if !translated.nil? && !translated.empty?
                         elsif parameters[1].is_a?(String)
                             parameter = parameters[1].strip
                             next if parameter.empty?
@@ -421,7 +381,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                             parameter = romanize_string(parameter) if romanize
 
                             translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                            parameters[1] = translated unless translated.nil? || translated.empty?
+                            parameters[1] = translated if !translated.nil? && !translated.empty?
                         end
 
                         item.parameters = parameters
@@ -498,7 +458,7 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
             string = romanize_string(string) if romanize
 
             translated = system_translation_map[string]
-            array[i] = translated unless translated.nil? || translated.empty?
+            array[i] = translated if !translated.nil? && !translated.empty?
         end
 
         if i.zero?
@@ -527,7 +487,7 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
             value = romanize_string(value) if romanize
 
             translated = system_translation_map[value]
-            value = translated unless translated.nil? || translated.empty?
+            value = translated if !translated.nil? && !translated.empty?
         elsif value.is_a?(Array)
             value.each_with_index do |string, i|
                 string = string.strip
@@ -536,7 +496,7 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
                 string = romanize_string(string) if romanize
 
                 translated = system_translation_map[string]
-                value[i] = translated unless translated.nil? || translated.empty?
+                value[i] = translated if !translated.nil? && !translated.empty?
             end
         end
 
@@ -599,7 +559,7 @@ def self.write_scripts(scripts_file_path, other_path, output_path, romanize, log
         end
 
         # this shit finally works and requires NO further changes
-        string_array, index_array = extract_quoted_strings(code)
+        string_array, index_array = extract_quoted_strings(code, :write)
 
         string_array.zip(index_array).reverse_each do |string, index|
             string = string.strip.delete('　')
