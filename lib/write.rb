@@ -164,7 +164,7 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
                                 end
 
                                 if split_length > line_length
-                                    list[item_indices.last].parameters[0] = split[line_length..].join("\n")
+                                    list[item_indices.last].parameters[0] = split[line_length - 1..].join("\n")
                                 end
                             end
                         end
@@ -335,7 +335,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                                     end
 
                                     if split_length > line_length
-                                        list[item_indices.last].parameters[0] = split[line_length..].join("\n")
+                                        list[item_indices.last].parameters[0] = split[line_length - 1..].join("\n")
                                     end
                                 end
                             end
