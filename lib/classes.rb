@@ -75,43 +75,6 @@ class Rect
     end
 end
 
-# Fuck using an array with set, that's just straight dumb and not efficient
-class IndexSet
-    def initialize
-        @hash = Hash.new
-    end
-
-    def add(item)
-        return if @hash.include?(item)
-        @hash[item] = @hash.size
-        @hash
-    end
-
-    def include?(item)
-        @hash.include?(item)
-    end
-
-    def each(&block)
-        @hash.each_key(&block)
-    end
-
-    def to_a
-        @hash.dup
-    end
-
-    def join(delimiter = '')
-        @hash.keys.join(delimiter)
-    end
-
-    def length
-        @hash.size
-    end
-
-    def empty?
-        @hash.empty?
-    end
-end
-
 class Hash
     def insert_at_index(index, key, value)
         return self[key] = value if index >= size

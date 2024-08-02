@@ -92,8 +92,8 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
 
     maps_object_map = Hash[maps_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
-    maps_lines = IndexSet.new
-    names_lines = IndexSet.new
+    maps_lines = Set.new
+    names_lines = Set.new
 
     maps_translation_map = nil
     names_translation_map = nil
@@ -161,9 +161,10 @@ def self.read_map(maps_files_paths, output_path, romanize, logging, game_type, p
 
                                 maps_lines.add(parsed)
                             end
+
+                            line.clear
                         end
 
-                        line.clear
                         in_sequence = false
                     end
 
@@ -262,7 +263,7 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
             next
         end
 
-        other_lines = IndexSet.new
+        other_lines = Set.new
         other_translation_map = nil
 
         if processing_mode == :append
@@ -339,9 +340,10 @@ def self.read_other(other_files_paths, output_path, romanize, logging, game_type
 
                                     other_lines.add(parsed)
                                 end
+
+                                line.clear
                             end
 
-                            line.clear
                             in_sequence = false
                         end
 
@@ -449,7 +451,7 @@ def self.read_system(system_file_path, ini_file_path, output_path, romanize, log
 
     system_object = Marshal.load(File.binread(system_file_path))
 
-    system_lines = IndexSet.new
+    system_lines = Set.new
     system_translation_map = nil
 
     if processing_mode == :append
@@ -575,7 +577,7 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
 
     script_entries = Marshal.load(File.binread(scripts_file_path))
 
-    scripts_lines = IndexSet.new
+    scripts_lines = Set.new
     scripts_translation_map = nil
 
     if processing_mode == :append
@@ -593,8 +595,6 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
     # This code was fun before `that` game used Windows-1252 degree symbol
     script_entries.each do |script|
         code = Zlib::Inflate.inflate(script[2]).force_encoding('UTF-8')
-        # we're fucking cloning because of encoding issue
-        codes_content.push(code.clone)
 
         # I figured how String#encode works - now everything is good
         unless code.valid_encoding?
@@ -610,62 +610,35 @@ def self.read_scripts(scripts_file_path, output_path, romanize, logging, process
             end
         end
 
-        extract_quoted_strings(code, :read).each do |string|
-            # Removes the U+3000 Japanese typographical space to check if string, when stripped, is truly empty
-            string = string.strip.delete('　')
+        codes_content.push(code)
+    end
 
-            next if string.empty?
+    extracted = extract_strings(codes_content.join)
 
-            # Maybe this mess will remove something that mustn't be removed, but it needs to be tested
-            next if string.start_with?(/([#!?$@]|(\.\/)?(Graphics|Data|Audio|CG|Movies|Save)\/)/) ||
-                string.match?(/^[^\p{L}]+$/) ||
-                string.match?(/^\d+$/) ||
-                string.match?(/%.*(\d|\+|\*)d\]?:?$/) ||
-                string.match?(/^\[((ON|OFF)|P[EMRT])\]$/) ||
-                string.match?(/^\[\]$/) ||
-                string.match?(/^(.)\1{2,}$/) ||
-                string.match?(/^(false|true)$/) ||
-                string.match?(/^[wr]b$/) ||
-                string.match?(/^(?=.*\d)[A-Za-z0-9-]+$/) ||
-                string.match?(/^[a-z\-()\/ +'&]*$/) ||
-                string.match?(/^[A-Za-z]+[+-]$/) ||
-                string.match?(STRING_IS_ONLY_SYMBOLS_RE) ||
-                string.match?(/^Tile.*[A-Z]$/) ||
-                string.match?(/^[a-zA-Z][a-z]+([A-Z][a-z]*)+$/) ||
-                string.match?(/^Cancel Action$|^Invert$|^End$|^Individual$|^Missed File$|^Bitmap$|^Audio$/) ||
-                string.match?(/^(?=.*%d)(?=.*%m)(?=.*%Y).*$/) ||
-                string.match?(/^\\\\ALPHAC/) ||
-                string.match?(/^[A-Z]{,3}-[A-Z][A-Za-z]+/) ||
-                string.match?(/\.(mp3|ogg|jpg|png|ini|txt)$/i) ||
-                string.match?(/\/(\d.*)?$/) ||
-                string.match?(/FILE$/) ||
-                string.match?(/#\{/) ||
-                string.match?(/(?<!\\)\\(?![\\G#])/) ||
-                string.match?(/\+?=?=/) ||
-                string.match?(/[}{_<>]/) ||
-                string.match?(/r[vx]data/) ||
-                string.match?(/No such file or directory/) ||
-                string.match?(/level \*\*/) ||
-                string.match?(/Courier New|Comic Sans|Lucida|Verdana|Tahoma|Arial|Times New Roman/) ||
-                string.match?(/Player start location/) ||
-                string.match?(/Common event call has exceeded/) ||
-                string.match?(/se-/) ||
-                string.match?(/Start Pos/) ||
-                string.match?(/An error has occurred/) ||
-                string.match?(/Define it first/) ||
-                string.match?(/Process Skill/) ||
-                string.match?(/Wpn Only/) ||
-                string.match?(/Don't Wait/) ||
-                string.match?(/Clear image/) ||
-                string.match?(/Can Collapse/)
+    extracted.each do |string|
+        # Removes the U+3000 Japanese typographical space to check if string, when stripped, is truly empty
+        string = string.gsub('　', ' ').strip
 
-            string = romanize_string(string) if romanize
+        next if string.empty?
 
-            scripts_translation_map.insert_at_index(scripts_lines.length, string, '') if processing_mode == :append &&
-                !scripts_translation_map.include?(string)
+        next if string.match?(/(Graphics|Data|Audio|Movies|System)\/.*\/?/) ||
+            string.match?(/r[xv]data2?$/) ||
+            string.match?(STRING_IS_ONLY_SYMBOLS_RE) ||
+            string.match?(/@window/) ||
+            string.match?(/\$game/) ||
+            string.match?(/_/) ||
+            string.match?(/^\\e/) ||
+            string.match?(/.*\(/) ||
+            string.match?(/^([d\d\p{P}+-]*|[d\p{P}+-]*)$/) ||
+            string.match?(/ALPHAC/) ||
+            string.match?(/^(Actor<id>|ExtraDropItem|EquipLearnSkill|GameOver|Iconset|Window|true|false|MActor%d|w[rb]|\\f|\\n|\[[A-Z]*\])$/)
 
-            scripts_lines.add(string)
-        end
+        string = romanize_string(string) if romanize
+
+        scripts_translation_map.insert_at_index(scripts_lines.length, string, '') if processing_mode == :append &&
+            !scripts_translation_map.include?(string)
+
+        scripts_lines.add(string)
     end
 
     puts "Parsed #{scripts_filename}" if logging

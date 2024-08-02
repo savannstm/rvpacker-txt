@@ -127,110 +127,79 @@ def self.shuffle_words(array)
     end
 end
 
-# @param [String] string A parsed scripts code string, containing raw Ruby code
-# @param [Symbol] mode Mode to extract quoted strings
-# @return [IndexSet<String>] Set of extracted strings
-def extract_quoted_strings(string, mode)
-    if mode == :read
-        result = IndexSet.new
+def escaped?(line, index)
+    backslash_count = 0
 
-        skip_block = false
-        in_quotes = false
-        quote_type = nil
-        buffer = []
-
-        string.each_line do |line|
-            stripped = line.strip
-
-            next if stripped[0] == '#' ||
-                (!in_quotes && !stripped.match?(/["']/)) ||
-                stripped.start_with?(/(Win|Lose)|_Fanfare/) ||
-                stripped.match?(/eval\(/)
-
-            skip_block = true if stripped.start_with?('=begin')
-            skip_block = false if stripped.start_with?('=end')
-
-            next if skip_block
-
-            line.each_char do |char|
-                if %w[' "].include?(char)
-                    unless quote_type.nil? || char == quote_type
-                        buffer.push(char)
-                        next
-                    end
-
-                    quote_type = char
-                    in_quotes = !in_quotes
-                    result.add(buffer.join)
-                    buffer.clear
-                    next
-                end
-
-                next unless in_quotes
-
-                if char == "\r"
-                    next
-                elsif char == "\n"
-                    buffer.push('\#')
-                    next
-                end
-
-                buffer.push(char)
-            end
-        end
-
-        result
-    else
-        strings_array = []
-        indices_array = []
-
-        skip_block = false
-        in_quotes = false
-        quote_type = nil
-        buffer = []
-
-        current_string_index = 0
-        string.each_line do |line|
-            stripped = line.strip
-
-            if stripped[0] == '#' || stripped.start_with?(/(Win|Lose)|_Fanfare/)
-                current_string_index += line.length
-                next
-            end
-
-            skip_block = true if stripped.start_with?('=begin')
-            skip_block = false if stripped.start_with?('=end')
-
-            if skip_block
-                current_string_index += line.length
-                next
-            end
-
-            buffer.push('\#') if in_quotes
-
-            line.each_char.each_with_index do |char, index|
-                if %w[' "].include?(char)
-                    unless quote_type.nil? || char == quote_type
-                        buffer.push(char)
-                        next
-                    end
-
-                    quote_type = char
-                    in_quotes = !in_quotes
-
-                    strings_array.push(buffer.join)
-                    indices_array.push(current_string_index + index)
-
-                    buffer.clear
-                    next
-                end
-
-                buffer.push(char) if in_quotes
-            end
-
-            current_string_index += line.length
-        end
-
-        [strings_array, indices_array]
+    (0..index).reverse_each do |i|
+        break if line[i] != '\\'
+        backslash_count += 1
     end
+
+    backslash_count.even?
+end
+
+# @param [String] ruby_code
+def extract_strings(ruby_code, mode = false)
+    strings = mode ? [] : Set.new
+    indices = []
+    inside_string = false
+    inside_multiline_comment = false
+    string_start_index = 0
+    current_quote_type = ''
+
+    global_index = 0
+    ruby_code.each_line do |line|
+        stripped = line.strip
+
+        unless inside_string
+            if stripped[0] == '#'
+                global_index += line.length
+                next
+            end
+
+            if stripped.start_with?('=begin')
+                inside_multiline_comment = true
+            elsif stripped.start_with?('=end')
+                inside_multiline_comment = false
+            end
+        end
+
+        if inside_multiline_comment
+            global_index += line.length
+            next
+        end
+
+        i = 0
+        while i < line.length
+            char = line[i]
+
+            if !inside_string && char == '#'
+                break
+            end
+
+            if !inside_string && ['"', "'"].include?(char)
+                inside_string = true
+                string_start_index = global_index + i
+                current_quote_type = char
+            elsif inside_string && char == current_quote_type && escaped?(line, i - 1)
+                extracted_string = ruby_code[string_start_index + 1...global_index + i].gsub(/\r?\n/, '\#')
+
+                if mode
+                    strings << extracted_string
+                    indices << string_start_index + 1
+                else
+                    strings.add(extracted_string)
+                end
+
+                inside_string = false
+                current_quote_type = ''
+            end
+
+            i += 1
+        end
+
+        global_index += line.length
+    end
+
+    mode ? [strings, indices] : strings.to_a
 end

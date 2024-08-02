@@ -536,15 +536,10 @@ def self.write_scripts(scripts_file_path, other_path, output_path, romanize, log
 
     scripts_translation_map = Hash[scripts_original_text.zip(scripts_translated_text)]
 
-    # Shuffle can possibly break the game in scripts, so no shuffling
-    codes = []
-
-    # This code was fun before `that` game used Windows-1252 degree symbol
     script_entries.each do |script|
         code = Zlib::Inflate.inflate(script[2])
         code.force_encoding('UTF-8')
 
-        # I figured how String#encode works - now everything is good
         unless code.valid_encoding?
             [Encoding::UTF_8, Encoding::WINDOWS_1252, Encoding::SHIFT_JIS].each do |encoding|
                 encoded = code.encode(code.encoding, encoding)
@@ -559,23 +554,21 @@ def self.write_scripts(scripts_file_path, other_path, output_path, romanize, log
         end
 
         # this shit finally works and requires NO further changes
-        string_array, index_array = extract_quoted_strings(code, :write)
+        string_array, index_array = extract_strings(code, true)
 
         string_array.zip(index_array).reverse_each do |string, index|
-            string = string.strip.delete('　')
+            string = string.gsub('　', '').strip
             next if string.empty? || !scripts_translation_map.include?(string)
 
             string = romanize_string(string) if romanize
 
             gotten = scripts_translation_map[string]
-            code[index - string.length, string.length] = gotten unless gotten.nil? || gotten.empty?
+            code[index, string.length] = gotten unless gotten.nil? || gotten.empty?
         end
 
-        codes.push(code)
         script[2] = Zlib::Deflate.deflate(code, Zlib::BEST_COMPRESSION)
     end
 
-    # File.binwrite(File.join(output_path, 'scripts_plain.txt'), codes.join("\n")) - debug line
     File.binwrite(File.join(output_path, scripts_basename), Marshal.dump(script_entries))
     puts "Written #{scripts_basename}" if logging
 end
