@@ -7,25 +7,27 @@ require 'fileutils'
 require 'classes'
 
 def self.parse_options
-    options = { action: nil,
-                input_path: './',
-                output_path: './',
-                disable_processing: {
-                    maps: false,
-                    other: false,
-                    system: false,
-                    scripts: false
-                },
-                disable_custom_processing: false,
-                romanize: false,
-                logging: false,
-                force: false,
-                append: false,
-                shuffle_level: 0,
-                silent: false }
+    options = {
+        action: nil,
+        input_path: './',
+        output_path: './',
+        disable_processing: {
+            maps: false,
+            other: false,
+            system: false,
+            scripts: false,
+        },
+        disable_custom_processing: false,
+        romanize: false,
+        logging: false,
+        force: false,
+        append: false,
+        shuffle_level: 0,
+        silent: false,
+    }
 
     options[:action] = ARGV[0]
-    options[:silent] = true unless ARGV.delete('--silent').nil?
+    options[:silent] = true if ARGV.delete('--silent')
 
     unless %w[read write].include?(options[:action])
         if %w[-h --help].include?(options[:action])
@@ -37,102 +39,136 @@ def self.parse_options
         end
     end
 
-    read_command_description = 'Parses files from "original" or "data" folders of input directory to "translation" folder of output directory.'
-    write_command_description = 'Writes translated files using original files from "original" or "data" folder of input directory and writes results to "output" folder of output directory.'
-    banner_text = "This tool allows to parse RPG Maker games to .txt files and write them back to their initial form.\n\nUsage: rvpacker-txt COMMAND [OPTIONS]\n\nCOMMANDS:\n    read - #{read_command_description}\n    write - #{write_command_description}\nOPTIONS:"
+    read_command_description =
+        'Parses files from "original" or "data" folders of input directory to "translation" folder of output directory.'
+    write_command_description =
+        'Writes translated files using original files from "original" or "data" folder of input directory and writes ' \
+            'results to "output" folder of output directory.'
+    banner_text =
+        "This tool allows to parse RPG Maker games to .txt files and write them back to their initial form.\n\nUsage:" \
+            " rvpacker-txt COMMAND [OPTIONS]\n\nCOMMANDS:\n    read - #{read_command_description}\n    write - " \
+            "#{write_command_description}\nOPTIONS:"
 
-    banner,
-        input_dir_description,
-        output_dir_description, =
+    banner, input_dir_description, output_dir_description, =
         case options[:action]
-            when 'read'
-                ["#{read_command_description}\n\nOPTIONS:\n",
-                 ['Input directory, containing folders "original" or "data" with original game files.'],
-                 ['Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.']]
-            when 'write'
-                ["#{write_command_description}\n\nOPTIONS:\n",
-                 ['Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.'],
-                 ['Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.']]
-            else
-                [banner_text,
-                 ['When reading: Input directory, containing folders "original" or "data" with original game files.',
-                  'When writing: Input directory, containing folders "original" or "data" and "translation" with original game files and .txt files with translation respectively.'],
-                 ['When reading: Output directory, where a "translation" folder will be created, containing parsed .txt files with the text from the game.',
-                  'When writing: Output directory, where an "output" folder will be created, containing compiled RPG Maker files with your translation.']]
+        when 'read'
+            [
+                "#{read_command_description}\n\nOPTIONS:\n",
+                ['Input directory, containing folders "original" or "data" with original game files.'],
+                [
+                    'Output directory, where a "translation" folder will be created, containing parsed .txt files ' \
+                        'with the text from the game.',
+                ],
+            ]
+        when 'write'
+            [
+                "#{write_command_description}\n\nOPTIONS:\n",
+                [
+                    'Input directory, containing folders "original" or "data" and "translation" with original game ' \
+                        'files and .txt files with translation respectively.',
+                ],
+                [
+                    'Output directory, where an "output" folder will be created, containing compiled RPG Maker files ' \
+                        'with your translation.',
+                ],
+            ]
+        else
+            [
+                banner_text,
+                [
+                    'When reading: Input directory, containing folders "original" or "data" with original game files.',
+                    'When writing: Input directory, containing folders "original" or "data" and "translation" with ' \
+                        'original game files and .txt files with translation respectively.',
+                ],
+                [
+                    'When reading: Output directory, where a "translation" folder will be created, containing parsed ' \
+                        '.txt files with the text from the game.',
+                    'When writing: Output directory, where an "output" folder will be created, containing compiled ' \
+                        'RPG Maker files with your translation.',
+                ],
+            ]
         end
 
-    OptionParser.new(banner) do |cmd|
-        cmd.on('-i', '--input-dir PATH', String,
-               *input_dir_description) do |dir|
-            options[:input_path] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
-            options[:output_path] = options[:input_path]
-        end
-
-        cmd.on('-o', '--output-dir PATH', String,
-               *output_dir_description) do |dir|
-            options[:output_path] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
-        end
-
-        cmd.on('--disable-processing FILES', Array,
-               'Skips processing specified files.',
-               'Example: --disable-processing=maps,other,system.',
-               '[Allowed values: maps, other, system, scripts]') do |files|
-            files.each do |file|
-                files = %w[maps other system scripts]
-                index = files.find_index(file)
-                options[:disable_processing][files[index]] = true if index
-            end
-        end
-
-        cmd.on('--disable-custom-processing',
-               'Disables built-in custom text processing for some games.',
-               'This flag will automatically be used when writing if you parsed game text with it.') do
-            options[:disable_custom_processing] = true
-        end
-
-        cmd.on('-r', '--romanize',
-               'If you parsing text from a Japanese game, that contains symbols like 「」, which are just the Japanese quotation marks,',
-               'it automatically replaces these symbols by their roman equivalents (in this case, "").',
-               'This flag will automatically be used when writing if you parsed game text with it.') do
-            options[:romanize] = true
-        end
-
-        if options[:action] == 'read'
-            cmd.on('-f', '--force',
-                   'Force rewrite all files. Cannot be used with --append.',
-                   'USE WITH CAUTION!') do
-                options[:force] = true
+    OptionParser
+        .new(banner) do |cmd|
+            cmd.on('-i', '--input-dir PATH', String, *input_dir_description) do |dir|
+                options[:input_path] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
+                options[:output_path] = options[:input_path]
             end
 
-            cmd.on('-a', '--append',
-                   "When the rvpacker-txt or the game which files you've parsed receives an update, you probably should re-read game files with --append,",
-                   'which will append any new text to your files without overwriting the progress.',
-                   'Cannot be used with --force.') do
-                raise '--append cannot be used with --force.' if options[:force]
-                options[:append] = true
+            cmd.on('-o', '--output-dir PATH', String, *output_dir_description) do |dir|
+                options[:output_path] = File.exist?(dir) ? File.realpath(dir) : (raise "#{dir} not found")
             end
-        elsif options[:action] == 'write'
-            cmd.on('-s', '--shuffle-level NUMBER', Integer,
-                   'With value 1, shuffles all translation lines. With value 2, shuffles all words and lines in translation text.',
-                   'Example: --shuffle-level 1.',
-                   '[Allowed values: 0, 1, 2]',
-                   '[Default value: 0]') do |num|
-                raise 'Allowed values: 0, 1, 2.' if num > 2
-                options[:shuffle_level] = num
+
+            cmd.on(
+                '--disable-processing FILES',
+                Array,
+                'Skips processing specified files.',
+                'Example: --disable-processing=maps,other,system.',
+                '[Allowed values: maps, other, system, scripts]',
+            ) do |files|
+                files.each do |file|
+                    files = %w[maps other system scripts]
+                    index = files.find_index(file)
+                    options[:disable_processing][files[index]] = true if index
+                end
+            end
+
+            cmd.on(
+                '--disable-custom-processing',
+                'Disables built-in custom text processing for some games.',
+                'This flag will automatically be used when writing if you parsed game text with it.',
+            ) { options[:disable_custom_processing] = true }
+
+            cmd.on(
+                '-r',
+                '--romanize',
+                'If you parsing text from a Japanese game, that contains symbols like 「」, which are just the ' \
+                    'Japanese quotation marks,',
+                'it automatically replaces these symbols by their roman equivalents (in this case, "").',
+                'This flag will automatically be used when writing if you parsed game text with it.',
+            ) { options[:romanize] = true }
+
+            if options[:action] == 'read'
+                cmd.on('-f', '--force', 'Force rewrite all files. Cannot be used with --append.', 'USE WITH CAUTION!') do
+                    options[:force] = true
+                end
+
+                cmd.on(
+                    '-a',
+                    '--append',
+                    "When the rvpacker-txt or the game which files you've parsed receives an update, you probably " \
+                        'should re-read game files with --append,',
+                    'which will append any new text to your files without overwriting the progress.',
+                    'Cannot be used with --force.',
+                ) do
+                    raise '--append cannot be used with --force.' if options[:force]
+                    options[:append] = true
+                end
+            elsif options[:action] == 'write'
+                cmd.on(
+                    '-s',
+                    '--shuffle-level NUMBER',
+                    Integer,
+                    'With value 1, shuffles all translation lines. With value 2, shuffles all words and lines in ' \
+                        'translation text.',
+                    'Example: --shuffle-level 1.',
+                    '[Allowed values: 0, 1, 2]',
+                    '[Default value: 0]',
+                ) do |num|
+                    raise 'Allowed values: 0, 1, 2.' if num > 2
+                    options[:shuffle_level] = num
+                end
+            end
+
+            cmd.on('-l', '--log', 'Enables logging.') { options[:logging] = true }
+
+            cmd.on('-h', '--help', "Prints the program's help message or for the entered subcommand.") do
+                puts cmd
+                exit
             end
         end
-
-        cmd.on('-l', '--log',
-               'Enables logging.') do
-            options[:logging] = true
-        end
-
-        cmd.on('-h', '--help',
-               "Prints the program's help message or for the entered subcommand.") do
-            puts cmd
-            exit
-        end
-    end.parse!
+        .parse!
 
     options
 end
@@ -181,8 +217,9 @@ metadata_file_path = File.join(input_path, 'translation', '.rvpacker-txt-metadat
 FileUtils.mkdir_p(maps_path)
 FileUtils.mkdir_p(other_path)
 
-engine = extensions.each_pair { |sym, ext| break sym if File.exist?(File.join(original_directory, "System.#{ext}")) } ||
-    (raise "Couldn't determine project engine.")
+engine =
+    extensions.each_pair { |sym, ext| break sym if File.exist?(File.join(original_directory, "System.#{ext}")) } ||
+        (raise "Couldn't determine project engine.")
 
 files = Dir.glob("#{original_directory}/*#{extensions[engine]}")
 
@@ -195,9 +232,9 @@ files.each do |file|
     basename = File.basename(file)
     next unless basename.end_with?(extensions[engine])
 
-    if basename.start_with?(/Map[0-9]/)
+    if basename.match?(/^Map[0-9]/)
         maps_files_paths.push(file)
-    elsif !basename.start_with?(/Map|Tilesets|Animations|System|Scripts|Areas/)
+    elsif !basename.match?(/^(Map|Tilesets|Animations|System|Scripts|Areas)/)
         other_files_paths.push(file)
     elsif basename.start_with?('System')
         system_file_path = file
@@ -217,29 +254,41 @@ $wait_time = 0
 if options[:action] == 'read'
     require 'read'
 
-    processing_mode = if force
-                          unless silent
-                              wait_time_start = Time.now
+    processing_mode =
+        if force
+            unless silent
+                wait_time_start = Time.now
 
-                              puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
-                                   "If you really want to do it, make sure you've made a backup of your _trans files, if you made some changes in them already.",
-                                   "Input 'Y' to continue."
-                              exit unless $stdin.gets.chomp == 'Y'
+                puts "WARNING! You're about to forcefully rewrite all your translation files, including _trans files.",
+                          "If you really want to do it, make sure you've made a backup of your _trans files, if you '\
+							'made some changes in them already.",
+                          "Input 'Y' to continue."
+                exit unless $stdin.gets.chomp == 'Y'
 
-                              $wait_time += Time.now - wait_time_start
-                          end
-                          :force
-                      elsif append
-                          :append
-                      else
-                          :default
-                      end
+                $wait_time += Time.now - wait_time_start
+            end
+            :force
+        elsif append
+            :append
+        else
+            :default
+        end
 
-    File.binwrite(metadata_file_path, Marshal.dump({ romanize: romanize, disable_custom_processing: disable_custom_processing }))
+    File.binwrite(
+        metadata_file_path,
+        Marshal.dump({ romanize: romanize, disable_custom_processing: disable_custom_processing }),
+    )
 
     read_map(maps_files_paths, maps_path, romanize, logging, game_type, processing_mode) unless disable_processing[:maps]
-    read_other(other_files_paths, other_path, romanize, logging, game_type, processing_mode) unless disable_processing[:other]
-    read_system(system_file_path, ini_file_path, other_path, romanize, logging, processing_mode) unless disable_processing[:system]
+
+    unless disable_processing[:other]
+        read_other(other_files_paths, other_path, romanize, logging, game_type, processing_mode)
+    end
+
+    unless disable_processing[:system]
+        read_system(system_file_path, ini_file_path, other_path, romanize, logging, processing_mode)
+    end
+
     read_scripts(scripts_file_path, other_path, romanize, logging, processing_mode) unless disable_processing[:scripts]
 else
     require 'write'
@@ -261,9 +310,18 @@ else
         end
     end
 
-    write_map(maps_files_paths, maps_path, output_path, shuffle_level, romanize, logging, game_type) unless disable_processing[:maps]
-    write_other(other_files_paths, other_path, output_path, shuffle_level, romanize, logging, game_type) unless disable_processing[:other]
-    write_system(system_file_path, ini_file_path, other_path, output_path, shuffle_level, romanize, logging) unless disable_processing[:system]
+    unless disable_processing[:maps]
+        write_map(maps_files_paths, maps_path, output_path, shuffle_level, romanize, logging, game_type)
+    end
+
+    unless disable_processing[:other]
+        write_other(other_files_paths, other_path, output_path, shuffle_level, romanize, logging, game_type)
+    end
+
+    unless disable_processing[:system]
+        write_system(system_file_path, ini_file_path, other_path, output_path, shuffle_level, romanize, logging)
+    end
+
     write_scripts(scripts_file_path, other_path, output_path, romanize, logging) unless disable_processing[:scripts]
 end
 

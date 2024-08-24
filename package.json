@@ -1,0 +1,7 @@
+{
+    "dependencies": {},
+    "devDependencies": {
+        "@prettier/plugin-ruby": "^4.0.4",
+        "prettier": "^3.3.3"
+    }
+}

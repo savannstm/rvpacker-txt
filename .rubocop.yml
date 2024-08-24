@@ -1,22 +1,29 @@
+inherit_from:
+    - node_modules/@prettier/plugin-ruby/rubocop.yml
+
 Layout/EndOfLine:
-  EnforcedStyle: lf
+    EnforcedStyle: lf
 Layout/IndentationWidth:
-  Width: 4
+    Width: 4
 Style/RegexpLiteral:
-  Enabled: False
+    Enabled: False
 Style/Documentation:
-  Enabled: False
+    Enabled: False
 Style/GlobalVars:
-  Enabled: False
+    Enabled: False
 Metrics:
-  Enabled: False
+    Enabled: False
 Layout/CaseIndentation:
-  Enabled: False
+    Enabled: False
 Style/EmptyElse:
-  Enabled: False
+    Enabled: False
 Layout/MultilineOperationIndentation:
-  Enabled: False
+    Enabled: False
 Layout/EmptyLineAfterGuardClause:
-  Enabled: False
+    Enabled: False
 Security/MarshalLoad:
-  Enabled: False
+    Enabled: False
+Layout/LineLength:
+    Max: 120
+Style/IfUnlessModifier:
+    Enabled: False

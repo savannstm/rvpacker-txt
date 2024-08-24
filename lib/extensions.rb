@@ -1,120 +1,123 @@
 # frozen_string_literal: true
 
-# @param [String] string
+# @param [String] input_string
 # @return [String]
-def self.romanize_string(string)
-    string.each_char.each_with_index do |char, i|
-        case char
-            when '。'
-                string[i] = '.'
-            when '、', '，'
-                string[i] = ','
-            when '・'
-                string[i] = '·'
-            when '゠'
-                string[i] = '–'
-            when '＝', 'ー'
-                string[i] = '—'
-            when '…', '‥'
-                string[i, 3] = '...'
-            when '「', '」', '〈', '〉'
-                string[i] = "'"
-            when '『', '』', '《', '》'
-                string[i] = '"'
-            when '（', '〔', '｟', '〘'
-                string[i] = '('
-            when '）', '〕', '｠', '〙'
-                string[i] = ')'
-            when '｛'
-                string[i] = '{'
-            when '｝'
-                string[i] = '}'
-            when '［', '【', '〖', '〚'
-                string[i] = '['
-            when '］', '】', '〗', '〛'
-                string[i] = ']'
-            when '〜'
-                string[i] = '~'
-            when '？'
-                string[i] = '?'
-            when '：'
-                string[i] = ':'
-            when '！'
-                string[i] = '!'
-            when '※'
-                string[i] = '*'
-            when '　'
-                string[i] = ' '
-            when 'Ⅰ'
-                string[i] = 'I'
-            when 'ⅰ'
-                string[i] = 'i'
-            when 'Ⅱ'
-                string[i, 2] = 'II'
-            when 'ⅱ'
-                string[i, 2] = 'ii'
-            when 'Ⅲ'
-                string[i, 3] = 'III'
-            when 'ⅲ'
-                string[i, 3] = 'iii'
-            when 'Ⅳ'
-                string[i, 2] = 'IV'
-            when 'ⅳ'
-                string[i, 2] = 'iv'
-            when 'Ⅴ'
-                string[i] = 'V'
-            when 'ⅴ'
-                string[i] = 'v'
-            when 'Ⅵ'
-                string[i, 2] = 'VI'
-            when 'ⅵ'
-                string[i, 2] = 'vi'
-            when 'Ⅶ'
-                string[i, 3] = 'VII'
-            when 'ⅶ'
-                string[i, 3] = 'vii'
-            when 'Ⅷ'
-                string[i, 4] = 'VIII'
-            when 'ⅷ'
-                string[i, 4] = 'viii'
-            when 'Ⅸ'
-                string[i, 2] = 'IX'
-            when 'ⅸ'
-                string[i, 2] = 'ix'
-            when 'Ⅹ'
-                string[i] = 'X'
-            when 'ⅹ'
-                string[i] = 'x'
-            when 'Ⅺ'
-                string[i, 2] = 'XI'
-            when 'ⅺ'
-                string[i, 2] = 'xi'
-            when 'Ⅻ'
-                string[i, 3] = 'XII'
-            when 'ⅻ'
-                string[i, 3] = 'xii'
-            when 'Ⅼ'
-                string[i] = 'L'
-            when 'ⅼ'
-                string[i] = 'l'
-            when 'Ⅽ'
-                string[i] = 'C'
-            when 'ⅽ'
-                string[i] = 'c'
-            when 'Ⅾ'
-                string[i] = 'D'
-            when 'ⅾ'
-                string[i] = 'd'
-            when 'Ⅿ'
-                string[i] = 'M'
-            when 'ⅿ'
-                string[i] = 'm'
-            else
-                nil
+def self.romanize_string(input_string)
+    # @type [Array<String>]
+    result = []
+
+    input_string.each_char do |char|
+        result << case char
+        when '。'
+            '.'
+        when '、', '，'
+            ','
+        when '・'
+            '·'
+        when '゠'
+            '–'
+        when '＝', 'ー'
+            '—'
+        when '…', '‥'
+            '...'
+        when '「', '」', '〈', '〉'
+            "'"
+        when '『', '』', '《', '》'
+            '"'
+        when '（', '〔', '｟', '〘'
+            '('
+        when '）', '〕', '｠', '〙'
+            ')'
+        when '｛'
+            '{'
+        when '｝'
+            '}'
+        when '［', '【', '〖', '〚'
+            '['
+        when '］', '】', '〗', '〛'
+            ']'
+        when '〜'
+            '~'
+        when '？'
+            '?'
+        when '：'
+            ':'
+        when '！'
+            '!'
+        when '※'
+            '*'
+        when '　'
+            ' '
+        when 'Ⅰ'
+            'I'
+        when 'ⅰ'
+            'i'
+        when 'Ⅱ'
+            'II'
+        when 'ⅱ'
+            'ii'
+        when 'Ⅲ'
+            'III'
+        when 'ⅲ'
+            'iii'
+        when 'Ⅳ'
+            'IV'
+        when 'ⅳ'
+            'iv'
+        when 'Ⅴ'
+            'V'
+        when 'ⅴ'
+            'v'
+        when 'Ⅵ'
+            'VI'
+        when 'ⅵ'
+            'vi'
+        when 'Ⅶ'
+            'VII'
+        when 'ⅶ'
+            'vii'
+        when 'Ⅷ'
+            'VIII'
+        when 'ⅷ'
+            'viii'
+        when 'Ⅸ'
+            'IX'
+        when 'ⅸ'
+            'ix'
+        when 'Ⅹ'
+            'X'
+        when 'ⅹ'
+            'x'
+        when 'Ⅺ'
+            'XI'
+        when 'ⅺ'
+            'xi'
+        when 'Ⅻ'
+            'XII'
+        when 'ⅻ'
+            'xii'
+        when 'Ⅼ'
+            'L'
+        when 'ⅼ'
+            'l'
+        when 'Ⅽ'
+            'C'
+        when 'ⅽ'
+            'c'
+        when 'Ⅾ'
+            'D'
+        when 'ⅾ'
+            'd'
+        when 'Ⅿ'
+            'M'
+        when 'ⅿ'
+            'm'
+        else
+            char
         end
     end
 
-    string
+    result.join
 end
 
 # @param [Array<String>] array Array of strings
@@ -139,7 +142,7 @@ def escaped?(line, index)
 end
 
 # @param [String] ruby_code
-def extract_strings(ruby_code, mode = false)
+def extract_strings(ruby_code, mode: false)
     strings = mode ? [] : Set.new
     indices = []
     inside_string = false
@@ -173,11 +176,9 @@ def extract_strings(ruby_code, mode = false)
         while i < line.length
             char = line[i]
 
-            if !inside_string && char == '#'
-                break
-            end
+            break if !inside_string && char == '#'
 
-            if !inside_string && ['"', "'"].include?(char)
+            if !inside_string && %w[" '].include?(char)
                 inside_string = true
                 string_start_index = global_index + i
                 current_quote_type = char
@@ -202,4 +203,30 @@ def extract_strings(ruby_code, mode = false)
     end
 
     mode ? [strings, indices] : strings.to_a
+end
+
+ENCODINGS = %w[
+    ISO-8859-1
+    Windows-1252
+    Shift_JIS
+    GB18030
+    EUC-JP
+    ISO-2022-JP
+    BIG5
+    EUC-KR
+    Windows-1251
+    KOI8-R
+    UTF-8
+].freeze
+
+# @param [String] input_string
+# @return [String]
+def convert_to_utf8(input_string)
+    ENCODINGS.each do |encoding|
+        return input_string.encode('UTF-8', encoding)
+    rescue Encoding::InvalidByteSequenceError, Encoding::UndefinedConversionError
+        next
+    end
+
+    raise EncodingError("Cannot convert string #{input_string} to UTF-8")
 end

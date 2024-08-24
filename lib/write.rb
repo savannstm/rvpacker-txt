@@ -8,7 +8,11 @@ require_relative 'extensions'
 # @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
 # @param [String] game_type
 def self.get_parameter_translated(code, parameter, hashmap, game_type)
+    # @type [Array<String>]
     remaining_strings = []
+    # @type [Array<Boolean>]
+    # true - insert at end
+    # false - insert at start
     insert_positions = []
 
     ends_with_if = parameter[/ if\(.*\)$/]
@@ -16,43 +20,40 @@ def self.get_parameter_translated(code, parameter, hashmap, game_type)
     if ends_with_if
         parameter = parameter.chomp(ends_with_if)
         remaining_strings.push(ends_with_if)
-        insert_positions.push(1)
+        insert_positions.push(true)
     end
 
-    unless game_type.nil?
+    if game_type
         case game_type
-            when 'lisa'
-                case code
-                    when 401, 405
-                        prefix = parameter[/^(\\et\[[0-9]+\]|\\nbt)/]
-                        parameter = parameter.sub(prefix, '') if prefix
+        when 'lisa'
+            case code
+            when 401, 405
+                prefix = parameter[/^(\\et\[[0-9]+\]|\\nbt)/]
+                parameter = parameter.sub(prefix, '') if prefix
 
-                        remaining_strings.push(prefix)
-                        insert_positions.push(0)
-                    when 102, 402
-                        # Implement some custom parsing
-                    when 356
-                        # Implement some custom parsing
-                    else
-                        nil
-                end
-                # Implement cases for other games
+                remaining_strings.push(prefix)
+                insert_positions.push(false)
             else
                 nil
+            end
+            # Implement cases for other games
+        else
+            nil
         end
     end
 
     translated = hashmap[parameter]
-    return nil if translated.nil? || translated.empty?
+    return nil if !translated || translated.empty?
 
-    remaining_strings.zip(insert_positions).each do |string, position|
-        case position
-            when 0
+    remaining_strings
+        .zip(insert_positions)
+        .each do |string, position|
+            if !position
                 translated = string + translated
-            when 1
+            else
                 translated += string
+            end
         end
-    end
 
     translated
 end
@@ -60,19 +61,20 @@ end
 # @param [String] variable
 # @param [Integer] type
 # @param [String] filename
-# @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is free!)
+# @param [Hash{String => String}] hashmap Translation hashmap (as everything in Ruby passed by reference, this pass is
+#                                 free!)
 # @param [String] _game_type
 # @return [String]
 def self.get_variable_translated(variable, type, _filename, hashmap, _game_type)
     variable = variable.gsub(/\r?\n/, "\n")
 
     case type
-        when 0 # name
-        when 1 # nickname
-        when 2 # description
-        when 3 # note
-        else
-            nil
+    when 0 # name
+    when 1 # nickname
+    when 2 # description
+    when 3 # note
+    else
+        nil
     end
 
     hashmap[variable]
@@ -88,21 +90,31 @@ end
 def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, romanize, logging, game_type)
     maps_object_map = Hash[original_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
-    maps_original_text = File.readlines(File.join(maps_path, 'maps.txt'), encoding: 'UTF-8', chomp: true).map do |line|
-        line.gsub('\#', "\n").strip
-    end.freeze
+    # @type [Array<String>]
+    maps_original_text =
+        File
+            .readlines(File.join(maps_path, 'maps.txt'), encoding: 'UTF-8', chomp: true)
+            .map { |line| line.gsub('\#', "\n").strip }
+            .freeze
 
-    names_original_text = File.readlines(File.join(maps_path, 'names.txt'), encoding: 'UTF-8', chomp: true).map do |line|
-        line.gsub('\#', "\n").strip
-    end.freeze
+    # @type [Array<String>]
+    names_original_text =
+        File
+            .readlines(File.join(maps_path, 'names.txt'), encoding: 'UTF-8', chomp: true)
+            .map { |line| line.gsub('\#', "\n").strip }
+            .freeze
 
-    maps_translated_text = File.readlines(File.join(maps_path, 'maps_trans.txt'), encoding: 'UTF-8', chomp: true).map do |line|
-        line.gsub('\#', "\n").strip
-    end
+    # @type [Array<String>]
+    maps_translated_text =
+        File
+            .readlines(File.join(maps_path, 'maps_trans.txt'), encoding: 'UTF-8', chomp: true)
+            .map { |line| line.gsub('\#', "\n").strip }
 
-    names_translated_text = File.readlines(File.join(maps_path, 'names_trans.txt'), encoding: 'UTF-8', chomp: true).map do |line|
-        line.gsub('\#', "\n").strip
-    end
+    # @type [Array<String>]
+    names_translated_text =
+        File
+            .readlines(File.join(maps_path, 'names_trans.txt'), encoding: 'UTF-8', chomp: true)
+            .map { |line| line.gsub('\#', "\n").strip }
 
     if shuffle_level.positive?
         maps_translated_text.shuffle!
@@ -114,36 +126,43 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
         end
     end
 
+    # @type [Hash{String => String}]
     maps_translation_map = Hash[maps_original_text.zip(maps_translated_text)].freeze
+    # @type [Hash{String => String}]
     names_translation_map = Hash[names_original_text.zip(names_translated_text)].freeze
 
+    # @type [Array<Integer>]
     # 401 - dialogue lines
     # 102 - dialogue choices array
     # 402 - one of the dialogue choices from the array
     # 356 - system lines/special texts (do they even exist before mv?)
-    allowed_codes = [401, 102, 402, 356].freeze
+    allowed_codes = [102, 320, 324, 356, 401, 402].freeze
 
     maps_object_map.each do |filename, object|
+        # @type [String]
         display_name = object.display_name
-        display_name_gotten = names_translation_map[display_name]
-        object.display_name = display_name_gotten unless display_name_gotten.nil?
+        display_name_translated = names_translation_map[display_name]
+        object.display_name = display_name_translated if display_name_translated
 
         events = object.events
-        next if events.nil?
+        next unless events
 
         events.each do |ev, event|
             pages = event.pages
-            next if pages.nil?
+            next unless pages
 
             pages.each_with_index do |page, pg|
                 list = page.list
-                next if list.nil?
+                next unless list
 
                 in_sequence = false
+                # @type [Array<String>]
                 line = []
+                # @type [Array<Integer>]
                 item_indices = []
 
                 list.each_with_index do |item, it|
+                    # @type [Integer]
                     code = item.code
 
                     if in_sequence && code != 401
@@ -153,64 +172,80 @@ def self.write_map(original_files_paths, maps_path, output_path, shuffle_level, 
 
                             translated = get_parameter_translated(401, joined, maps_translation_map, game_type)
 
-                            if !translated.nil? && !translated.empty?
+                            if translated && !translated.empty?
                                 split = translated.split('\#')
 
                                 split_length = split.length
                                 line_length = line.length
 
-                                item_indices.each_with_index do |index, i|
-                                    list[index].parameters[0] = i < split_length ? split[i] : ''
-                                end
+                                item_indices.each_with_index { |index, i| list[index].parameters[0] = i < split_length ? split[i] : '' }
 
                                 if split_length > line_length
                                     list[item_indices.last].parameters[0] = split[line_length - 1..].join("\n")
                                 end
                             end
+
+                            line.clear
                         end
 
-                        line.clear
                         in_sequence = false
                     end
 
                     next unless allowed_codes.include?(code)
 
+                    # @type [Array<String>]
                     parameters = item.parameters
 
-                    if code == 401
-                        next unless parameters[0].is_a?(String) && !parameters[0].empty?
+                    case code
+                    when 401
+                        # @type [String]
+                        parameter = parameters[0]
+                        next unless parameter.is_a?(String)
+
+                        parameter = convert_to_utf8(parameter)
 
                         in_sequence = true
-                        line.push(parameters[0].gsub('　', ' ').strip)
+                        line.push(parameter.gsub('　', ' ').strip)
                         item_indices.push(it)
-                    elsif parameters[0].is_a?(Array)
+                    when 102
                         parameters[0].each_with_index do |subparameter, sp|
                             next unless subparameter.is_a?(String)
 
                             subparameter = subparameter.strip
                             next if subparameter.empty?
 
-                            subparameter = romanize_string(subparameter) if romanize
+                            subparameter = convert_to_utf8(subparameter)
+                            subparameter = romanize_string(subparameter.strip) if romanize
 
                             translated = get_parameter_translated(code, subparameter, maps_translation_map, game_type)
-                            parameters[0][sp] = translated if !translated.nil? && !translated.empty?
+                            parameters[0][sp] = translated if translated && !translated.empty?
                         end
-                    elsif parameters[0].is_a?(String)
-                        parameter = parameters[0].strip
+                    when 356
+                        # @type [String]
+                        parameter = parameters[0]
+                        next unless parameter.is_a?(String)
+
+                        parameter = parameter.strip
                         next if parameter.empty?
 
+                        parameter = convert_to_utf8(parameter)
                         parameter = romanize_string(parameter) if romanize
 
                         translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                        parameters[0] = translated if !translated.nil? && !translated.empty?
-                    elsif parameters[1].is_a?(String)
-                        parameter = parameters[1].strip
+                        parameters[0] = translated if translated && !translated.empty?
+                    when 320, 324, 402
+                        # @type [String]
+                        parameter = parameters[1]
+                        next unless parameter.is_a?(String)
+
+                        parameter = parameter.strip
                         next if parameter.empty?
 
-                        parameter = romanize_string(parameter) if romanize
+                        parameter = convert_to_utf8(parameter)
+                        parameter = romanize_string(parameters[1].strip) if romanize
 
                         translated = get_parameter_translated(code, parameter, maps_translation_map, game_type)
-                        parameters[1] = translated if !translated.nil? && !translated.empty?
+                        parameters[1] = translated if translated && !translated.empty?
                     end
 
                     item.parameters = parameters
@@ -242,79 +277,88 @@ end
 def self.write_other(original_files_paths, other_path, output_path, shuffle_level, romanize, logging, game_type)
     other_object_array_map = Hash[original_files_paths.map { |f| [File.basename(f), Marshal.load(File.binread(f))] }]
 
+    # @type [Array<String>]
     # 401 - dialogue lines
     # 405 - credits lines
     # 102 - dialogue choices array
     # 402 - one of the dialogue choices from the array
     # 356 - system lines/special texts (do they even exist before mv?)
-    allowed_codes = [401, 405, 102, 402, 356].freeze
+    allowed_codes = [102, 320, 324, 356, 401, 402, 405].freeze
 
     other_object_array_map.each do |filename, other_object_array|
         other_filename = File.basename(filename, '.*').downcase
 
-        other_original_text = File.readlines(File.join(other_path, "#{other_filename}.txt"), encoding: 'UTF-8', chomp: true)
-                                  .map { |line| line.gsub('\#', "\n").strip }
+        # @type [Array<String>]
+        other_original_text =
+            File
+                .readlines(File.join(other_path, "#{other_filename}.txt"), encoding: 'UTF-8', chomp: true)
+                .map { |line| line.gsub('\#', "\n").strip }
 
-        other_translated_text = File.readlines(File.join(other_path, "#{other_filename}_trans.txt"), encoding: 'UTF-8', chomp: true)
-                                    .map { |line| line.gsub('\#', "\n").strip }
+        # @type [Array<String>]
+        other_translated_text =
+            File
+                .readlines(File.join(other_path, "#{other_filename}_trans.txt"), encoding: 'UTF-8', chomp: true)
+                .map { |line| line.gsub('\#', "\n").strip }
 
         if shuffle_level.positive?
             other_translated_text.shuffle!
             other_translated_text = shuffle_words(other_translated_text) if shuffle_level == 2
         end
 
+        # @type [Hash{String => String}]
         other_translation_map = Hash[other_original_text.zip(other_translated_text)].freeze
 
         if !filename.start_with?(/Common|Troops/)
             other_object_array.each do |object|
-                next if object.nil?
+                next unless object
 
-                name = object.name
-                nickname = object.nickname if object.is_a?(RPG::Actor)
-                description = object.description
-                note = object.note
+                variables = [
+                    object.name,
+                    object.is_a?(RPG::Actor) ? object.nickname : nil,
+                    object.description,
+                    object.note,
+                    object.is_a?(RPG::Skill) || object.is_a?(RPG::State) ? object.message1 : nil,
+                    object.is_a?(RPG::Skill) || object.is_a?(RPG::State) ? object.message2 : nil,
+                    object.is_a?(RPG::State) ? object.message3 : nil,
+                    object.is_a?(RPG::State) ? object.message4 : nil,
+                ]
 
-                [name, nickname, description, note].each_with_index do |variable, type|
-                    next unless variable.is_a?(String)
+                attributes = %i[name nickname description note message1 message2 message3 message4]
 
-                    variable = variable.strip
-                    next if variable.empty?
+                variables.each_with_index do |var, type|
+                    next unless var.is_a?(String)
 
-                    variable = romanize_string(variable) if romanize
+                    var = var.strip
+                    next if var.empty?
 
-                    variable = variable.split("\n").map(&:strip).join("\n")
+                    var = convert_to_utf8(var)
+                    var = romanize_string(var) if romanize
+                    var = var.split("\n").map(&:strip).join("\n")
 
-                    translated = get_variable_translated(variable, type, filename, other_translation_map, game_type)
+                    translated = get_variable_translated(var, type, filename, other_translation_map, game_type)
 
-                    if !translated.nil? && !translated.empty?
-                        if type.zero?
-                            object.name = translated
-                        elsif type == 1
-                            object.nickname = translated if object.is_a?(RPG::Actor)
-                        elsif type == 2
-                            object.description = translated
-                        else
-                            object.note = translated
-                        end
-                    end
+                    object.send("#{attributes[type]}=", translated) if translated && !translated.empty?
                 end
             end
         else
             other_object_array.each_with_index do |object, obj|
-                next if object.nil?
+                next unless object
 
                 pages = object.pages
-                pages_length = pages.nil? ? 1 : pages.length
+                pages_length = !pages ? 1 : pages.length
 
                 (0..pages_length).each do |pg|
-                    list = pages.nil? ? object.list : pages[pg].instance_variable_get(:@list) # for some reason .list access doesn't work (wtf?)
-                    next if list.nil?
+                    list = !pages ? object.list : pages[pg].instance_variable_get(:@list) # for some reason .list access doesn't work (wtf?)
+                    next unless list
 
                     in_sequence = false
+                    # @type [Array<String>]
                     line = []
+                    # @type [Array<Integer>]
                     item_indices = []
 
                     list.each_with_index do |item, it|
+                        # @type [Integer]
                         code = item.code
 
                         if in_sequence && ![401, 405].include?(code)
@@ -324,7 +368,7 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
 
                                 translated = get_parameter_translated(401, joined, other_translation_map, game_type)
 
-                                if !translated.nil? && !translated.empty?
+                                if translated && !translated.empty?
                                     split = translated.split('\#')
 
                                     split_length = split.length
@@ -338,57 +382,75 @@ def self.write_other(original_files_paths, other_path, output_path, shuffle_leve
                                         list[item_indices.last].parameters[0] = split[line_length - 1..].join("\n")
                                     end
                                 end
+
+                                line.clear
                             end
 
-                            line.clear
                             in_sequence = false
                         end
 
                         next unless allowed_codes.include?(code)
 
+                        # @type [Array<String>]
                         parameters = item.parameters
 
-                        if [401, 405].include?(code)
-                            next unless parameters[0].is_a?(String) && !parameters[0].empty?
+                        case code
+                        when 401, 405
+                            # @type [String]
+                            parameter = parameters[0]
+                            next unless parameter.is_a?(String)
+
+                            parameter = convert_to_utf8(parameter)
 
                             in_sequence = true
-                            line.push(parameters[0].gsub('　', ' ').strip)
+                            line.push(parameter.gsub('　', ' ').strip)
                             item_indices.push(it)
-                        elsif parameters[0].is_a?(Array)
+                        when 102
                             parameters[0].each_with_index do |subparameter, sp|
                                 next unless subparameter.is_a?(String)
 
                                 subparameter = subparameter.strip
                                 next if subparameter.empty?
 
+                                subparameter = convert_to_utf8(subparameter)
                                 subparameter = romanize_string(subparameter) if romanize
 
                                 translated = get_parameter_translated(code, subparameter, other_translation_map, game_type)
-                                parameters[0][sp] = translated if !translated.nil? && !translated.empty?
+                                parameters[0][sp] = translated if translated && !translated.empty?
                             end
-                        elsif parameters[0].is_a?(String)
-                            parameter = parameters[0].strip
+                        when 356
+                            # @type [String]
+                            parameter = parameters[0]
+                            next unless parameter.is_a?(String)
+
+                            parameter = parameter.strip
                             next if parameter.empty?
 
+                            parameter = convert_to_utf8(parameter)
                             parameter = romanize_string(parameter) if romanize
 
                             translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                            parameters[0] = translated if !translated.nil? && !translated.empty?
-                        elsif parameters[1].is_a?(String)
-                            parameter = parameters[1].strip
+                            parameters[0] = translated if translated && !translated.empty?
+                        when 320, 324, 402
+                            # @type [String]
+                            parameter = parameters[1]
+                            next unless parameter.is_a?(String)
+
+                            parameter = parameter.strip
                             next if parameter.empty?
 
+                            parameter = convert_to_utf8(parameter)
                             parameter = romanize_string(parameter) if romanize
 
                             translated = get_parameter_translated(code, parameter, other_translation_map, game_type)
-                            parameters[1] = translated if !translated.nil? && !translated.empty?
+                            parameters[1] = translated if translated && !translated.empty?
                         end
 
                         item.parameters = parameters
                         list[it] = item
                     end
 
-                    if pages.nil?
+                    if !pages
                         object.list = list
                     else
                         pages[pg].instance_variable_set(:@list, list)
@@ -421,24 +483,29 @@ end
 # @param [String] other_path
 # @param [String] output_path
 # @param [Integer] shuffle_level Level of shuffle
-# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare with parsed
+# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare
+#                           with parsed
 # @param [Boolean] logging Whether to log
 def self.write_system(system_file_path, ini_file_path, other_path, output_path, shuffle_level, romanize, logging)
     system_basename = File.basename(system_file_path)
+
+    # @type [System]
     system_object = Marshal.load(File.binread(system_file_path))
 
-    system_original_text = File.readlines(File.join(other_path, 'system.txt'), encoding: 'UTF-8', chomp: true)
-                               .map(&:strip)
-                               .freeze
+    # @type [Array<String>]
+    system_original_text =
+        File.readlines(File.join(other_path, 'system.txt'), encoding: 'UTF-8', chomp: true).map(&:strip).freeze
 
-    system_translated_text = File.readlines(File.join(other_path, 'system_trans.txt'), encoding: 'UTF-8', chomp: true)
-                                 .map(&:strip)
+    # @type [Array<String>]
+    system_translated_text =
+        File.readlines(File.join(other_path, 'system_trans.txt'), encoding: 'UTF-8', chomp: true).map(&:strip)
 
     if shuffle_level.positive?
         system_translated_text.shuffle!
         system_translated_text = shuffle_words(system_translated_text) if shuffle_level == 2
     end
 
+    # @type [Hash{String => String}]
     system_translation_map = Hash[system_original_text.zip(system_translated_text)].freeze
 
     elements = system_object.elements
@@ -448,70 +515,73 @@ def self.write_system(system_file_path, ini_file_path, other_path, output_path, 
     currency_unit = system_object.currency_unit
     terms_vocabulary = system_object.terms || system_object.words
 
-    [elements, skill_types, weapon_types, armor_types].each_with_index do |array, i|
-        next unless array.is_a?(Array)
+    arrays = [elements, skill_types, weapon_types, armor_types]
+    attributes = %i[elements skill_types weapon_types armor_types]
 
-        array.each_with_index do |string, i|
-            string = string.strip
-            next if string.empty?
+    arrays
+        .zip(attributes)
+        .each do |array, attr|
+            next unless array.is_a?(Array)
 
-            string = romanize_string(string) if romanize
+            array.each_with_index do |string, i|
+                string = string.strip
+                next if string.empty?
 
-            translated = system_translation_map[string]
-            array[i] = translated if !translated.nil? && !translated.empty?
+                string = convert_to_utf8(string)
+                string = romanize_string(string) if romanize
+
+                translated = system_translation_map[string]
+                array[i] = translated if translated && !translated.empty?
+            end
+
+            system_object.send("#{attr}=", array)
         end
 
-        if i.zero?
-            system_object.elements = array
-        elsif i == 1
-            system_object.skill_types = array
-        elsif i == 2
-            system_object.weapon_types = array
-        else
-            system_object.armor_types = array
-        end
+    if currency_unit
+        currency_unit = romanize_string(currency_unit) if romanize
+        currency_unit_translated = system_translation_map[currency_unit]
+        system_object.currency_unit = currency_unit_translated if currency_unit.is_a?(String) && currency_unit_translated &&
+            !currency_unit_translated.empty?
     end
 
-    currency_unit = romanize_string(currency_unit) if romanize
-    currency_unit_translated = system_translation_map[currency_unit]
-    system_object.currency_unit = currency_unit_translated if currency_unit.is_a?(String) &&
-        (!currency_unit_translated.nil? && !currency_unit_translated.empty?)
-
     terms_vocabulary.instance_variables.each do |variable|
+        # @type [String | Array<String>]
         value = terms_vocabulary.instance_variable_get(variable)
 
         if value.is_a?(String)
             value = value.strip
             next if value.empty?
 
+            value = convert_to_utf8(value)
             value = romanize_string(value) if romanize
 
             translated = system_translation_map[value]
-            value = translated if !translated.nil? && !translated.empty?
+            value = translated if translated && !translated.empty?
         elsif value.is_a?(Array)
             value.each_with_index do |string, i|
                 string = string.strip
                 next if string.empty?
 
+                string = convert_to_utf8(string)
                 string = romanize_string(string) if romanize
 
                 translated = system_translation_map[string]
-                value[i] = translated if !translated.nil? && !translated.empty?
+                value[i] = translated if translated && !translated.empty?
             end
         end
 
         terms_vocabulary.instance_variable_set(variable, value)
     end
 
-    if system_object.terms.nil?
+    if !system_object.terms
         system_object.words = terms_vocabulary
     else
         system_object.terms = terms_vocabulary
     end
 
-    game_title_translated = system_translated_text[-1]
+    game_title_translated = system_translated_text.last
 
-    unless game_title_translated.nil? || game_title_translated.empty?
+    if game_title_translated && !game_title_translated.empty?
         system_object.game_title = game_title_translated
         write_ini_title(ini_file_path, game_title_translated)
     end
@@ -523,48 +593,45 @@ end
 # @param [String] scripts_file_path Path to Scripts.*data file
 # @param [String] other_path Path to translation/other directory containing .txt files
 # @param [String] output_path Path to the output directory
-# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare with parsed
+# @param [Boolean] romanize If files were read with romanize, this option will romanize original game text to compare
+#                  with parsed
 # @param [Boolean] logging Whether to log
 def self.write_scripts(scripts_file_path, other_path, output_path, romanize, logging)
     scripts_basename = File.basename(scripts_file_path)
     script_entries = Marshal.load(File.binread(scripts_file_path))
 
-    scripts_original_text = File.readlines(File.join(other_path, 'scripts.txt'), encoding: 'UTF-8', chomp: true)
-                                .map { |line| line.gsub('\#', "\r\n") }
-    scripts_translated_text = File.readlines(File.join(other_path, 'scripts_trans.txt'), encoding: 'UTF-8', chomp: true)
-                                  .map { |line| line.gsub('\#', "\r\n") }
+    # @type [Array<String>]
+    scripts_original_text =
+        File
+            .readlines(File.join(other_path, 'scripts.txt'), encoding: 'UTF-8', chomp: true)
+            .map { |line| line.gsub('\#', "\r\n") }
+    # @type [Array<String>]
+    scripts_translated_text =
+        File
+            .readlines(File.join(other_path, 'scripts_trans.txt'), encoding: 'UTF-8', chomp: true)
+            .map { |line| line.gsub('\#', "\r\n") }
 
+    # @type [Hash{String => String}]
     scripts_translation_map = Hash[scripts_original_text.zip(scripts_translated_text)]
 
     script_entries.each do |script|
+        # @type [String]
         code = Zlib::Inflate.inflate(script[2])
-        code.force_encoding('UTF-8')
+        code = convert_to_utf8(code)
 
-        unless code.valid_encoding?
-            [Encoding::UTF_8, Encoding::WINDOWS_1252, Encoding::SHIFT_JIS].each do |encoding|
-                encoded = code.encode(code.encoding, encoding)
+        string_array, index_array = extract_strings(code, mode: true)
 
-                if encoded.valid_encoding?
-                    code.force_encoding(encoding)
-                    break
-                end
-            rescue Encoding::InvalidByteSequenceError
-                next
+        string_array
+            .zip(index_array)
+            .reverse_each do |string, index|
+                string = string.gsub('　', '').strip
+                next if string.empty? || !scripts_translation_map.include?(string)
+
+                string = romanize_string(string) if romanize
+
+                translated = scripts_translation_map[string]
+                code[index, string.length] = translated if translated && !translated.empty?
             end
-        end
-
-        # this shit finally works and requires NO further changes
-        string_array, index_array = extract_strings(code, true)
-
-        string_array.zip(index_array).reverse_each do |string, index|
-            string = string.gsub('　', '').strip
-            next if string.empty? || !scripts_translation_map.include?(string)
-
-            string = romanize_string(string) if romanize
-
-            gotten = scripts_translation_map[string]
-            code[index, string.length] = gotten unless gotten.nil? || gotten.empty?
-        end
 
         script[2] = Zlib::Deflate.deflate(code, Zlib::BEST_COMPRESSION)
     end
