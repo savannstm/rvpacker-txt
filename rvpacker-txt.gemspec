@@ -5,8 +5,7 @@ Gem::Specification.new do |spec|
     spec.version = '1.13.0'
     spec.authors = ['Howard Jeng', 'Andrew Kesterson', 'Solistra', 'Darkness9724', 'savannstm']
     spec.email = ['savannstm@gmail.com']
-    spec.summary =
-        'Reads RPG Maker XP/VX/VXAce game text to .txt files and writes them to their initial form.'
+    spec.summary = 'Reads RPG Maker XP/VX/VXAce game text to .txt files and writes them to their initial form.'
     spec.homepage = 'https://github.com/savannstm/rvpacker-txt'
     spec.license = 'MIT'
     spec.required_ruby_version = Gem::Requirement.new('>= 3.0.0')
@@ -20,7 +19,7 @@ Gem::Specification.new do |spec|
         lib/write.rb
         lib/extensions.rb
         Gemfile
-        LICENSE
+        LICENSE.md
         README.md
         rvpacker-txt.gemspec
     ]
